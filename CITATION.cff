@@ -1,0 +1,17 @@
+# YAML 1.2
+---
+cff-version: "1.2.0"
+title: "demoses_grid_tariffs"
+authors:
+  - family-names: Dinga
+    given-names: Christian
+    orcid: "https://orcid.org/0000-0000-0000-0000"
+date-released: 2026-04-12
+version: "0.1.0"
+repository-code: "https://github.com/ChristianDDinga/demoses_grid_tariffs"
+keywords:
+  - "Grid tariffs"
+  - " Flexibility"
+  - " Electrification"
+  - " Grid congestion"
+message: "If you use this software, please cite it using these metadata."

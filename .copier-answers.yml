@@ -1,0 +1,24 @@
+# Changes here will be overwritten by Copier
+SelectCodeQualityFeatures:
+- AddSonarCloud_flag
+- AddEditorConfig_flag
+SelectCommunityFeatures: []
+SelectDocumentationFeatures:
+- AddLocalDocumentation_flag
+- AddOnlineDocumentation_flag
+- AddDevDoc_flag
+- AddGitHubActionDocumentation_flag
+SelectPublishReleaseFeatures: []
+_commit: 0.6.1
+_src_path: https://github.com/nlesc/python-template.git
+copyright_holder: Delft University of Technology
+email: c.dohdinga@tudelft.nl
+full_name: Christian Doh Dinga
+github_organization: ChristianDDinga
+keywords: Grid tariffs, Flexibility, Electrification, Grid congestion
+license: MIT
+package_name: demoses_grid_tariffs
+package_short_description: Code to investigate the impacts of grid tariffs on prosumer
+    flexibility and grid loading
+template_profile: recommended
+version: 0.1.0
