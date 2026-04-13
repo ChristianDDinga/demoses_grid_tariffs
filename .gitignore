@@ -3,6 +3,17 @@
 *$py.class
 __pycache__
 
+#  Ignore data files, logs, and outputs
+*.log
+*.sqlite
+data/
+results/
+output/
+dev/
+*.png
+*.pdf
+input/
+
 # Distribution / packaging
 .Python
 build/
