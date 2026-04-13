@@ -78,3 +78,8 @@ venv.bak/
 *.swp
 *.swo
 *.orig
+
+# ide
+.idea
+.eclipse
+.vscode/
