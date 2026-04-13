@@ -11,18 +11,9 @@ build-backend = "setuptools.build_meta"
 authors = [
     { name = "Christian Doh Dinga", email = "c.dohdinga@tudelft.nl" }
 ]
-classifiers = [
-    "Development Status :: 2 - Pre-Alpha",
-    "Intended Audience :: Developers",
-    "Intended Audience :: Science/Research",
-    "",
-    "Natural Language :: English",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
-]
-dependencies = []
+
+dynamic = ["dependencies"]
+
 description = "Code to investigate the impacts of grid tariffs on prosumer flexibility and grid loading"
 keywords = ["Grid tariffs"," Flexibility"," Electrification"," Grid congestion"]
 license = {file = "LICENSE"}
@@ -33,28 +24,11 @@ version = "0.1.0"
 
 [project.optional-dependencies]
 dev = [
-    "build",  # build is not only used in publishing (below), but also in the template's test suite
     "bump-my-version",
     "coverage [toml]",
     "pytest",
     "pytest-cov",
     "ruff",
-    "sphinx",
-    "sphinx_rtd_theme",
-    "sphinx-autoapi",
-    "tox",
-    "myst_parser",
-]
-docs = [
-    "sphinx",
-    "sphinx_rtd_theme",
-    "sphinx-autoapi",
-    "myst_parser",
-]
-publishing = [
-    "build",
-    "twine",
-    "wheel",
 ]
 
 [project.urls]
@@ -62,24 +36,17 @@ Repository = "https://github.com/ChristianDDinga/demoses_grid_tariffs"
 Issues = "https://github.com/ChristianDDinga/demoses_grid_tariffs/issues"
 ReadTheDocs = "https://demoses_grid_tariffs.readthedocs.io"
 
+[tool.setuptools.dynamic]
+dependencies = {file = ["requirements.txt"]}
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-
+addopts = "-p pytest_mock"
 
 [tool.coverage.run]
 branch = true
 source = ["src/demoses_grid_tariffs"]
 command_line = "-m pytest"
-
-[tool.tox]
-legacy_tox_ini = """
-[tox]
-envlist = py38,py39,py310,py311,py312
-skip_missing_interpreters = true
-[testenv]
-commands = pytest
-extras = dev
-"""
 
 [tool.ruff]
 line-length = 120
@@ -91,7 +58,30 @@ extend-exclude = ["docs"]
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 
 # Enable Pyflakes `E` and `F` codes by default.
-select = ["ALL"]
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".hg",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "venv",
+    ".venv",
+    "scripts",
+]
+
 ignore = [
     "ANN101", # Missing type annotation for `self` in method
     "ANN102", # Missing type annotation for `cls` in classmethod
@@ -106,8 +96,69 @@ ignore = [
     "D104", # Missing public package docstring
     "D105", # Missing docstring in magic method
     "D107", # Missing docstring in `__init__`
+    'D100',  # Missing module docstring
+    'D107',  # Missing docstring in `__init__`
+    'D101',  # Missing public class docstring
+    'D102',  # Missing docstring in public method
+    'D104',  # Missing public package docstring
+    # The following list excludes rules irrelevant to the Google style
+    'D203',
+    'D204',
+    'D213',
+    'D215',
+    'D400',
+    'D401',
+    'D404',
+    'D406',
+    'D407',
+    'D408',
+    'D409',
+    'D413',
+    'PD011', # Use `.to_numpy()` instead of `.values`
+    'PLR0913', # Too many arguments in function definition (7 > 5)
+    'T201', # print found
+    'E712', # Ignore "Avoid equality comparisons to `True`; use `if df_to_plot["is_representative"]:` for trut"
+    'FA102',
+    'G004',
+    'TRY003',
+    'TRY400',
+    'EM102',
+    'PTH123',
+    'UP015',
+    'BLE001',
+    'C901',
+    'PLR0912',
+    'PLR0915',
+    'EM101',
+    'SIM118',
+    'B904',
+    'PD003',
+    'PERF203',
+    'SIM108',
+    'PLR2004',
+    'ERA001',
+    'RUF015',
+    'COM812',
+    'N803',
+    'RET504',
+    'N816',
+    'Q000',
+    'RUF005',
+    'RUF013',
+    'N806',
+    'PD002',
+    'PD008',
+    'C408',
+    'C414',
+    'C416',
+    'RUF059',
+    'SLF001',
+    'ICN001',
 ]
-pydocstyle.convention = "google"
+
+# Allow autofix for all enabled rules (when `--fix`) is provided.
+fixable = ["A", "B", "C", "D", "E", "F", "I"]
+unfixable = []
 
 [tool.ruff.lint.per-file-ignores]
 # Tests can ignore a few extra rules
@@ -119,8 +170,7 @@ pydocstyle.convention = "google"
 
 [tool.ruff.lint.isort]
 known-first-party = ["demoses_grid_tariffs"]
-force-single-line = true
-no-lines-before = ["future","standard-library","third-party","first-party","local-folder"]
+no-lines-before = ["future", "local-folder"]
 
 [tool.bumpversion]
 current_version = "0.1.0"
@@ -133,6 +183,3 @@ filename = "pyproject.toml"
 
 [[tool.bumpversion.files]]
 filename = "CITATION.cff"
-
-[[tool.bumpversion.files]]
-filename = "docs/conf.py"
