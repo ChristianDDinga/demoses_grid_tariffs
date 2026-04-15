@@ -6,14 +6,11 @@
 | :-- | :--  |
 | (1/5) code repository              | [![github repo badge](https://img.shields.io/badge/github-repo-000.svg?logo=github&labelColor=gray&color=blue)](https://github.com/ChristianDDinga/demoses_grid_tariffs) |
 | (2/5) license                      | [![github license badge](https://img.shields.io/github/license/ChristianDDinga/demoses_grid_tariffs)](https://github.com/ChristianDDinga/demoses_grid_tariffs) |
-| (3/5) community registry           | [![RSD](https://img.shields.io/badge/rsd-demoses_grid_tariffs-00a3e3.svg)](https://www.research-software.nl/software/demoses_grid_tariffs) [![workflow pypi badge](https://img.shields.io/pypi/v/demoses_grid_tariffs.svg?colorB=blue)](https://pypi.python.org/project/demoses_grid_tariffs/) |
+| (3/5) community registry           | [![RSD](https://img.shields.io/badge/rsd-demoses_grid_tariffs-00a3e3.svg)](https://www.research-software.nl/software/demoses_grid_tariffs) 
 | (4/5) citation                     | |
 | (5/5) checklist                    | [![workflow cii badge](https://bestpractices.coreinfrastructure.org/projects/<replace-with-created-project-identifier>/badge)](https://bestpractices.coreinfrastructure.org/projects/<replace-with-created-project-identifier>) |
 | howfairis                          | [![fair-software badge](https://img.shields.io/badge/fair--software.eu-%E2%97%8F%20%20%E2%97%8F%20%20%E2%97%8F%20%20%E2%97%8F%20%20%E2%97%8B-yellow)](https://fair-software.eu) |
 | **Other best practices**           | &nbsp; |
-| Static analysis                    | [![workflow scq badge](https://sonarcloud.io/api/project_badges/measure?project=ChristianDDinga_demoses_grid_tariffs&metric=alert_status)](https://sonarcloud.io/dashboard?id=ChristianDDinga_demoses_grid_tariffs) |
-| Coverage                           | [![workflow scc badge](https://sonarcloud.io/api/project_badges/measure?project=ChristianDDinga_demoses_grid_tariffs&metric=coverage)](https://sonarcloud.io/dashboard?id=ChristianDDinga_demoses_grid_tariffs) || Documentation                      | [![Documentation Status](https://readthedocs.org/projects/demoses_grid_tariffs/badge/?version=latest)](https://demoses_grid_tariffs.readthedocs.io/en/latest/?badge=latest) || **GitHub Actions**                 | &nbsp; |
-| Build                              | [![build](https://github.com/ChristianDDinga/demoses_grid_tariffs/actions/workflows/build.yml/badge.svg)](https://github.com/ChristianDDinga/demoses_grid_tariffs/actions/workflows/build.yml) |
 | Citation data consistency          | [![cffconvert](https://github.com/ChristianDDinga/demoses_grid_tariffs/actions/workflows/cffconvert.yml/badge.svg)](https://github.com/ChristianDDinga/demoses_grid_tariffs/actions/workflows/cffconvert.yml) || SonarCloud                         | [![sonarcloud](https://github.com/ChristianDDinga/demoses_grid_tariffs/actions/workflows/sonarcloud.yml/badge.svg)](https://github.com/ChristianDDinga/demoses_grid_tariffs/actions/workflows/sonarcloud.yml) |## How to use demoses_grid_tariffs
 
 Code to investigate the impacts of grid tariffs on prosumer flexibility and grid loading
