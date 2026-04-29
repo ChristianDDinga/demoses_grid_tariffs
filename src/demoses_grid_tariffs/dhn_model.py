@@ -11,6 +11,7 @@ from demoses_grid_tariffs.helper_functions import (
     CARRIERS_ELEC_PROD_LINKS,
     calculate_heatpump_cop,
     get_assets_based_on_carrier_name,
+    get_electricity_consumption_of_assets,
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -57,6 +58,8 @@ def build_district_heating_network(
     static_prices: pd.DataFrame,
     snapshots: pd.DatetimeIndex,
     vol_tou_tariffs: pd.DataFrame | None = None,
+    cap_tariff: float | None = None,
+    cap_tariff_weights_monthly: pd.DataFrame | None = None,
 ) -> tuple[pypsa.Network, Model]:
     """Build the district heating network model.
 
@@ -103,6 +106,9 @@ def build_district_heating_network(
         snapshots=snapshots,
     )
 
+    # NOTE: we add the volumetric TOU tariffs before creating the linopy model so that VOL TOU tariffs are added to the
+    # electricity supply price from the start. But for the capacity tariff, we add it after creating the linopy model
+    # because it requires modifying the linopy model with new variables, constraints, and objective function terms.
     if vol_tou_tariffs is not None:
         if len(vol_tou_tariffs) < len(snapshots):
             raise ValueError(
@@ -129,6 +135,12 @@ def build_district_heating_network(
     electricity_price_vals = electricity_price.loc[snapshots, "electricity_price"].values
     electricity_revenue_chps = build_electricity_revenue(n, model, chp_assets, electricity_price_vals)
     model = update_objective_function(model, electricity_revenue_chps)
+
+    # Add capacity tariff if provided
+    if cap_tariff is not None and cap_tariff_weights_monthly is not None:
+        logger.info("Adding capacity tariff to the heat model...")
+        model = add_capacity_tariff(n, model, cap_tariff, cap_tariff_weights_monthly, snapshots)
+        logger.info("Successfully added capacity tariff to the heat model.")
 
     return n, model
 
@@ -395,3 +407,105 @@ def add_volumetric_tou_tariffs(n: pypsa.Network, vol_tou_tariffs: pd.DataFrame) 
     n.generators_t.marginal_cost["electricity_supply"] = elec_cost_with_vol_tou_tariff
 
     return n
+
+
+def add_capacity_tariff(
+    n: pypsa.Network, model: Model,
+    cap_tariff: float,
+    cap_tariff_weights_monthly: pd.DataFrame,
+    snapshots: pd.DatetimeIndex,
+) -> Model:
+    """Add capacity tariff (on withdrawal/consumption) to the linopy model.
+
+    Args:
+    -----
+        n: PyPSA network object.
+        model: Linopy model object.
+        cap_tariff: Capacity tariff value in €/MW.
+        cap_tariff_weights_monthly: DataFrame containing monthly weights for the capacity tariff.
+        snapshots: DatetimeIndex containing the snapshots.
+
+    Returns:
+    --------
+        The updated linopy model with capacity tariff cost term added to the objective function.
+    """
+    # Get the list of electricity consuming assets
+    elec_consuming_assets = get_electricity_consumption_of_assets(n).columns.tolist()
+
+    months = snapshots.to_series().dt.to_period("M")
+    coords = {"asset_name": elec_consuming_assets, "month": months.unique()}
+    dims = tuple(coords.keys())
+
+    # Add a new variable for maximum electricity consumption per month for each electricity consuming asset
+    model.add_variables(
+        name="max_electricity_consumption_monthly",
+        coords=coords,
+        dims=dims,
+        lower=0,
+    )
+
+    # Check that elec_consuming_assets are all links since we are using Link-p to represent their electricity
+    # consumption in the constraints below
+    assert all(asset in n.links.index for asset in elec_consuming_assets
+    ), "Not all electricity consuming assets are links in the network"
+
+    # Add constraints to link the new variable with the electricity consumption of assets in each snapshot. This helps
+    # linearize the problem such that the max electricity consumption in each month should be greater than or equal to
+    # the electricity consumption in each snapshot of that month.
+    for month in months.unique():
+        snapshots_in_month = months[months == month].index
+        model.add_constraints(
+            model.variables["max_electricity_consumption_monthly"].sel(month=month)
+            >= model.variables["Link-p"].sel(name=elec_consuming_assets, snapshot=snapshots_in_month),
+            name=f"linearization_constraint_of_max_consumption_in_{month}"
+        )
+
+    # Build the weighted capacity tariff xarray
+    weighted_cap_tariff_xarray = build_weighted_cap_tariff_xarray(cap_tariff, cap_tariff_weights_monthly, snapshots)
+
+    # Calculate the capacity tariff cost term by multiplying the weighted monthly capacity tariff with the maximum 
+    # electricity consumption variable for each asset and month.
+    cap_tariff_cost_term = (weighted_cap_tariff_xarray * model.variables["max_electricity_consumption_monthly"]).sum()
+
+    # Add the capacity tariff cost term to the objective function
+    model.objective += cap_tariff_cost_term
+
+    return model
+
+
+def build_weighted_cap_tariff_xarray(
+        cap_tariff: float, cap_tariff_weights_monthly: pd.DataFrame, snapshots: pd.DatetimeIndex
+) -> xr.DataArray:
+    """
+    Build a weighted capacity tariff xarray to be used in the linopy model.
+
+    Args:
+    -----
+        cap_tariff : Capacity tariff value in €/MW.
+        cap_tariff_weights_monthly : DataFrame with columns ['month', 'value'] where month is 1–12.
+        snapshots : DatetimeIndex of model snapshots to align the weights with.
+
+    Returns
+    -------
+        Monthly weights with coord 'month' as PeriodIndex.
+    """
+    df = cap_tariff_weights_monthly.copy()
+
+    months = snapshots.to_series().dt.to_period("M")
+    unique_months = months.unique()
+    year = snapshots[0].year
+
+    # Convert CSV months → PeriodIndex
+    df["month"] = pd.PeriodIndex.from_fields(year=year, month=df["month"].astype(int), freq="M")
+
+    # Keep only months that appear in simulation
+    df = df[df["month"].isin(unique_months)]
+
+    # Ensure correct ordering
+    df = df.set_index("month").reindex(unique_months)
+
+    # Build weighted_cap_tariff_xarray
+    weights = xr.DataArray(df["value"].values, coords={"month": unique_months}, dims=("month",))
+    weighted_cap_tariff_xarray = cap_tariff * weights
+
+    return weighted_cap_tariff_xarray
