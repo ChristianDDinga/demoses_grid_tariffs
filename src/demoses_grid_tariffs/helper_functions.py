@@ -176,7 +176,7 @@ def calculate_heatpump_cop(tech_carrier: str, temp_source: np.ndarray) -> np.nda
     """
     tech_carrier = tech_carrier.lower()
     TECHS_WITH_TIME_VARYING_COP = {
-    "ashp": {"a": 6.81, "b": -0.121, "c": 0.000630, "temp_sink": 65},
+    "ashp": {"a": 6.81, "b": -0.121, "c": 0.000630, "temp_sink": 60},
     "gshp": {"a": 8.77, "b": -0.150, "c": 0.000734, "temp_sink": 45},
 }
     if tech_carrier not in TECHS_WITH_TIME_VARYING_COP:
