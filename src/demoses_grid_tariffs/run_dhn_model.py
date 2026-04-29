@@ -108,7 +108,9 @@ def build_and_solve_least_cost_network(
 
 def save_network_results(network: pypsa.Network, output_dir: Path) -> None:
     """A helper function to save the key outputs from a solved network."""
+    output_dir = output_dir / "DHN_results"
     output_dir.mkdir(parents=True, exist_ok=True)
+
     logger.info(f"Saving optimized heat network model results (including the pypsa network .nc file) to {output_dir}")
     network.statistics().to_csv(output_dir / "statistics.csv")
     network.export_to_netcdf(output_dir / "solved_pypsa_network.nc")
