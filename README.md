@@ -1,7 +1,5 @@
 ## Badges
 
-(Customize these badges with your own links, and check https://shields.io/ or https://badgen.net/ to see which other badges are available.)
-
 | fair-software.eu recommendations | |
 | :-- | :--  |
 | (1/5) code repository              | [![github repo badge](https://img.shields.io/badge/github-repo-000.svg?logo=github&labelColor=gray&color=blue)](https://github.com/ChristianDDinga/demoses_grid_tariffs) |
@@ -15,8 +13,6 @@
 
 Code to investigate the impacts of grid tariffs on prosumer flexibility and grid loading
 
-The project setup is documented in [project_setup.md](project_setup.md). Feel free to remove this document (and/or the link to this document) if you don't need it.
-
 ## Installation
 
 To install demoses_grid_tariffs from GitHub repository, do:
@@ -26,11 +22,6 @@ git clone git@github.com:ChristianDDinga/demoses_grid_tariffs.git
 cd demoses_grid_tariffs
 python -m pip install .
 ```
-
-## Documentation
-
-Include a link to your project's full documentation here.
-
 
 
 ## Credits
