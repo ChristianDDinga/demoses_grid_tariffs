@@ -3,6 +3,7 @@ import logging
 from pathlib import Path
 
 import pandas as pd
+import matplotlib.pyplot as plt
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -18,6 +19,10 @@ def main() -> None:
     demand_df = pd.read_csv(args.demand_csv, index_col="snapshots", parse_dates=True)
     vol_tou_tariffs = generate_tou_tariffs(demand_df)
     vol_tou_tariffs.to_csv(args.output_dir / "vol_tou_tariffs.csv")
+
+    # Plot and save
+    vol_tou_tariffs.plot(figsize=(14, 6), ylabel="[€/MWh]", xlabel="Snapshot", title="Volumetric TOU Tariffs")
+    plt.savefig(args.output_dir / "vol_tou_tariffs.png")
 
     logger.info(f"Successfully generated and saved volumetric TOU tariffs file in {args.output_dir} 🎉🎉🎉")
 
@@ -54,18 +59,18 @@ def generate_tou_tariffs(demand_df: pd.DataFrame) -> pd.DataFrame:
 
     df['peak_type'] = df["total"].apply(get_peak_type)
 
-    # 3. Define Price in €/MW
+    # 3. Define Price in €/MWh
     # Prices: {Season: {Peak: Price}}
     prices = {
         True: { # Winter
-            'off': 4.91,
-            'mid': 8.52,
-            'on': 12.07,
+            'off': 10,
+            'mid': 25,
+            'on': 50,
         },
         False: { # Non-Winter
-            'off': 4.97,
-            'mid': 9.06,
-            'on': 12.68
+            'off': 5,
+            'mid': 15,
+            'on': 40,
         }
     }
 
