@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import logging
 import numpy as np
 import pandas as pd
 import pypsa
@@ -11,6 +12,9 @@ from demoses_grid_tariffs.helper_functions import (
     calculate_heatpump_cop,
     get_assets_based_on_carrier_name,
 )
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 Geothermal_SPF = 6.0  # Seasonal performance factor for geothermal systems
 HT_ATES_SPF = 50.0  # Seasonal performance factor for HT-ATES systems
@@ -52,6 +56,7 @@ def build_district_heating_network(
     solar_availability: pd.DataFrame,
     static_prices: pd.DataFrame,
     snapshots: pd.DatetimeIndex,
+    vol_tou_tariffs: pd.DataFrame | None = None,
 ) -> tuple[pypsa.Network, Model]:
     """Build the district heating network model.
 
@@ -68,6 +73,7 @@ def build_district_heating_network(
         solar_availability: DataFrame containing solar availability timeseries for solar thermal generators.
         static_prices: DataFrame with non-time varying prices for greengas, waste material, residual heat, etc.
         snapshots: Set of timestamps to consider in the optimization.
+        vol_tou_tariffs: DataFrame containing volumetric TOU tariff in €/MWh (optional).
 
     Returns:
     --------
@@ -78,10 +84,10 @@ def build_district_heating_network(
         ValueError: If the length of any timeseries data is less than the number of snapshots.
     """
     # Check if the snapshots are valid
-    for timeseries_data in [heat_demand, temperature, hydrogen_price, electricity_price]:
-        if len(timeseries_data) < len(snapshots):
+    for ts_data in [heat_demand, temperature, hydrogen_price, electricity_price, solar_availability]:
+        if len(ts_data) < len(snapshots):
             raise ValueError(
-                f"Data length mismatch: {len(timeseries_data)} < {len(snapshots)}. "
+                f"Data length mismatch: {len(ts_data)} < {len(snapshots)}. "
                 "Ensure that the data covers all snapshots.",
             )
 
@@ -96,6 +102,16 @@ def build_district_heating_network(
         static_prices=static_prices,
         snapshots=snapshots,
     )
+
+    if vol_tou_tariffs is not None:
+        if len(vol_tou_tariffs) < len(snapshots):
+            raise ValueError(
+                f"Data length mismatch: {len(vol_tou_tariffs)} < {len(snapshots)}. "
+                "Ensure that the volumetric TOU tariffs data covers all snapshots.",
+            )
+        logger.info("Adding volumetric TOU tariffs to the heat model...")
+        n = add_volumetric_tou_tariffs(n, vol_tou_tariffs)
+        logger.info("Successfully added volumetric TOU tariffs to the heat model.")
 
     # Create linopy model from the pypsa network
     model = n.optimize.create_model()
@@ -355,3 +371,27 @@ def update_objective_function(model: Model, electricity_revenue_from_chps: Linea
     new_objective = model.objective.expression - electricity_revenue_from_chps
     model.objective = new_objective
     return model
+
+
+def add_volumetric_tou_tariffs(n: pypsa.Network, vol_tou_tariffs: pd.DataFrame) -> pypsa.Network:
+    """Add volumetric TOU tariffs.
+
+    This is done by simply adding the volumetric TOU tariff prices to the
+    marginal price of electricity supply for each snapshot.
+
+    Args:
+    -----
+        n: PyPSA network object.
+        vol_tou_tariffs: DataFrame containing volumetric TOU tariff prices in €/MWh.
+
+    Returns:
+    --------
+        The PyPSA network object with added volumetric TOU tariff links.
+    """
+    elec_cost_with_vol_tou_tariff = (
+        n.generators_t.marginal_cost["electricity_supply"].values + vol_tou_tariffs["vol_tou_tariff"].values
+    )
+
+    n.generators_t.marginal_cost["electricity_supply"] = elec_cost_with_vol_tou_tariff
+
+    return n

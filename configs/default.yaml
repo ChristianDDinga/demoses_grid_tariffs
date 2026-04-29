@@ -6,7 +6,7 @@ scenario_params:
 
 # ============================== Model parameters ==============================
 model_params:
-  num_snapshots: 168  # Between 1 to 8760 (full year run)
+  num_snapshots: 8760  # Between 1 to 8760 (full year run)
   solver_options:
     gurobi: # Can be any solver that works with linopy e.g., highs, glpk, gurobi, etc.
       # See https://docs.gurobi.com/projects/optimizer/en/current/reference/parameters.html#parameter-reference
