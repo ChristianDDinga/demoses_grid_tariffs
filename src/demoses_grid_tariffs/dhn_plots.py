@@ -108,8 +108,8 @@ def plot_dhn_results(n: pypsa.Network, output: Path) -> None:
     plot_heat_dispatch_timeseries(n, output=output)
     plot_electricity_consumption_and_generation(n, output=output)
     plot_optimal_capacities_per_tech_category(n, color="#87117b", output=output)
-    plot_heat_load_duration_curve(n, output=output)  # Already part of the combined heat analysis plot.
-    plot_heat_production_per_tech_category(n, output=output)  # Already part of the combined heat analysis plot.
+    # plot_heat_load_duration_curve(n, output=output)  # Already part of the combined heat analysis plot.
+    # plot_heat_production_per_tech_category(n, output=output)  # Already part of the combined heat analysis plot.
 
     #  Plot state of charge / energy level of storage units and stores
     for comp_type in ["StorageUnit", "Store"]:
@@ -149,7 +149,7 @@ def plot_dhn_results(n: pypsa.Network, output: Path) -> None:
 def plot_heat_technology_mix_for_given_network(
     network: pypsa.Network,
     name: str = "",
-    file_extension: str = "pdf",
+    file_extension: str = "png",
     output_dir: Path = None,
     font_size: int = 10,
 ) -> None:
