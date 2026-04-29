@@ -6,7 +6,10 @@ import pandas as pd
 import pypsa
 import yaml
 
-from demoses_grid_tariffs.dhn_model import build_district_heating_network, optimize_district_heating_network
+from demoses_grid_tariffs.dhn_model import (
+    build_district_heating_network,
+    optimize_district_heating_network,
+)
 from demoses_grid_tariffs.helper_functions import (
     get_electricity_consumption_of_assets,
     get_electricity_generation_of_assets,
@@ -20,6 +23,7 @@ def main() -> None:
     """Builds, runs, and writes out the least-cost district heating optimization model."""
     parser = argparse.ArgumentParser(description="Build and run the least-cost district heating model.")
     parser.add_argument("--config", type=Path, required=True, help="Path to the workflow_config.yaml file.")
+    parser.add_argument("--vol-tou-tariffs", type=Path, default=None, help="Path to the volumetric TOU tariffs CSV file.")
     parser.add_argument("--input-dir", type=Path, required=True, help="Directory containing heat model inputs.")
     parser.add_argument("--output-dir", type=Path, required=True, help="Directory to save heat results.")
     args = parser.parse_args()
@@ -28,7 +32,12 @@ def main() -> None:
         config = yaml.safe_load(f)
 
     # 1. Build and solve the least-cost model.
-    solved_lc_network = build_and_solve_least_cost_network(args.input_dir, config)
+    if args.vol_tou_tariffs:
+        vol_tou_tariffs = pd.read_csv(args.vol_tou_tariffs)
+    else:
+        vol_tou_tariffs = None
+
+    solved_lc_network = build_and_solve_least_cost_network(args.input_dir, config, vol_tou_tariffs)
 
     # 2. Save the results to the 'least_cost' subdirectory.
     save_network_results(solved_lc_network, args.output_dir / "least_cost")
@@ -36,7 +45,9 @@ def main() -> None:
     logger.info(" ============ Successfully completed least-cost heat model run 🎉🎉🎉 ============ ")
 
 
-def build_and_solve_least_cost_network(input_dir: Path, config: dict) -> pypsa.Network:
+def build_and_solve_least_cost_network(
+    input_dir: Path, config: dict, vol_tou_tariffs: pd.DataFrame | None
+) -> pypsa.Network:
     """Builds the district heating network model, solves for least-cost solution, and returns the solved network."""
     year = config["scenario_params"]["year"]
     num_snapshots = config["model_params"]["num_snapshots"]
@@ -52,6 +63,7 @@ def build_and_solve_least_cost_network(input_dir: Path, config: dict) -> pypsa.N
         solar_availability=pd.read_csv(input_dir / "solar_availability.csv", index_col="snapshots", parse_dates=True),
         static_prices=pd.read_csv(input_dir / "static_prices.csv", index_col="year"),
         snapshots=snapshots,
+        vol_tou_tariffs=vol_tou_tariffs,
     )
     logger.info("Successfully built the district heating network optimization model.")
 
