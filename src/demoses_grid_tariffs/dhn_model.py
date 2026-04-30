@@ -77,6 +77,8 @@ def build_district_heating_network(
         static_prices: DataFrame with non-time varying prices for greengas, waste material, residual heat, etc.
         snapshots: Set of timestamps to consider in the optimization.
         vol_tou_tariffs: DataFrame containing volumetric TOU tariff in €/MWh (optional).
+        cap_tariff: Capacity tariff in €/MW (optional).
+        cap_tariff_weights_monthly: DataFrame containing monthly weights for the capacity tariff (optional).
 
     Returns:
     --------
@@ -410,7 +412,8 @@ def add_volumetric_tou_tariffs(n: pypsa.Network, vol_tou_tariffs: pd.DataFrame) 
 
 
 def add_capacity_tariff(
-    n: pypsa.Network, model: Model,
+    n: pypsa.Network,
+    model: Model,
     cap_tariff: float,
     cap_tariff_weights_monthly: pd.DataFrame,
     snapshots: pd.DatetimeIndex,
@@ -474,7 +477,7 @@ def add_capacity_tariff(
 
 
 def build_weighted_cap_tariff_xarray(
-        cap_tariff: float, cap_tariff_weights_monthly: pd.DataFrame, snapshots: pd.DatetimeIndex
+        cap_tariff: float, cap_tariff_weights_monthly: pd.DataFrame, snapshots: pd.DatetimeIndex,
 ) -> xr.DataArray:
     """
     Build a weighted capacity tariff xarray to be used in the linopy model.
