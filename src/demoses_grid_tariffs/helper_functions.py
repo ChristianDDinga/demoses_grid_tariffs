@@ -705,3 +705,111 @@ def generate_powerflow_statistics(
 
     output_path = experiment_path / "statistics.csv"
     final_df.to_csv(output_path, index=False)
+
+
+def plot_vol_tou_tariffs(
+    vol_tou_tariffs: pd.DataFrame,
+    output_dir: Path,
+    fig_size: tuple[int, int] = (9, 5),
+    font_size: float = 10,
+) -> None:
+    """Plots the volumetric time-of-use tariffs and saves the figure.
+
+    Args:
+    -----
+        vol_tou_tariffs: DataFrame containing the volumetric time-of-use tariffs with a datetime index.
+        output_dir: Path to the folder where the output figure will be saved.
+        fig_size: Tuple specifying the figure size (width, height) in inches.
+        font_size: The base font size to use for the plot.
+    """
+    fig, ax = plt.subplots(figsize=fig_size)
+
+    vol_tou_tariffs.plot(ax=ax, color="#B153EF", legend=False,)
+
+    ax.set_xlabel("Snapshot", fontsize=font_size - 1)
+    ax.set_ylabel("Volumetric ToU Tariff  [€/MWh]", fontsize=font_size - 0.5, labelpad=10)
+    ax.tick_params(axis="y", labelsize=font_size - 1)
+    ax.tick_params(axis="x", labelsize=font_size - 1)
+    ax.grid(True, which="major", linestyle="--", linewidth=0.5, alpha=0.7)
+
+    fig.tight_layout()
+
+    # Save
+    output_dir.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_dir / "tariff_vol_tou_tariff.png", dpi=300)
+
+    plt.close(fig)
+
+
+def plot_capacity_tariff(
+    cap_tariff: float,
+    cap_tariff_weights_monthly: pd.DataFrame,
+    year: int,
+    output_dir: Path,
+    fig_size: tuple[int, int] = (9, 5),
+    font_size: float = 10,
+) -> None:
+    """Plots the monthly capacity tariff weights and saves the figure.
+
+    Args:
+    -----
+        cap_tariff: The capacity tariff value to include in the plot title.
+        cap_tariff_weights_monthly: DataFrame containing the monthly capacity tariff weights.
+        year: The year for which to plot the capacity tariff weights.
+        output_dir: Path to the folder where the output figure will be saved.
+        fig_size: Tuple specifying the figure size (width, height) in inches.
+        font_size: The base font size to use for the plot.
+    """
+    cap_tariff_weights_monthly_df = cap_tariff_weights_monthly.copy()
+
+    # Build datetime index
+    cap_tariff_weights_monthly_df["month"] = cap_tariff_weights_monthly_df["month"].astype(int)
+    cap_tariff_weights_monthly_df["Month"] = pd.to_datetime(
+        cap_tariff_weights_monthly_df["month"].apply(lambda m: f"{year}-{m:02d}-01")
+    )
+    cap_tariff_weights_monthly_df = cap_tariff_weights_monthly_df.set_index("Month").sort_index()
+
+    # Build series
+    cap_tariff_weights_monthly_df["base capacity tariff"] = cap_tariff
+    cap_tariff_weights_monthly_df["weighted capacity tariff"] = cap_tariff * cap_tariff_weights_monthly_df["value"]
+    cap_tariff_weights_monthly_df["monthly weighting factor"] = cap_tariff_weights_monthly_df["value"]
+
+    # Plot
+    fig, ax1 = plt.subplots(figsize=fig_size)
+
+    # Left axis: tariff values
+    cap_tariff_weights_monthly_df[["base capacity tariff", "weighted capacity tariff"]].plot(
+        ax=ax1, drawstyle="steps-post", color=["#B153EF", "#08F8EC"],
+    )
+    ax1.set_ylabel("Capacity tariff  [€/MW]", fontsize=font_size)
+
+    # Right axis: weights
+    ax2 = ax1.twinx()
+    cap_tariff_weights_monthly_df["monthly weighting factor"].plot(
+        ax=ax2, drawstyle="steps-post", linestyle="--", color="#EF0B85", fontsize=font_size,
+    )
+    ax2.set_ylabel("Weighting factor  [-]", fontsize=font_size, labelpad=12)
+
+    # Cosmetics
+    ax1.grid(True, which="both", linestyle="--", linewidth=0.5, alpha=0.7)
+    ax1.set_xlabel("Month", fontsize=font_size)
+
+    # axes tick labels font size
+    ax1.tick_params(axis="y", labelsize=font_size - 0.5)
+    ax1.tick_params(axis="x", labelsize=font_size - 1)
+    ax2.tick_params(axis="y", labelsize=font_size - 0.5)
+
+    # Combine legends from both axes (reorder so they appear like: cap_tariff, weight, weighted_cap_tariff)
+    handles1, labels1 = ax1.get_legend_handles_labels()
+    handles2, labels2 = ax2.get_legend_handles_labels()
+    combined_handles = [handles1[0], handles2[0], handles1[1]]
+    combined_labels = [labels1[0], labels2[0], labels1[1]]
+    ax1.legend(combined_handles, combined_labels, bbox_to_anchor=(0.645, 0.85), fontsize=font_size - 1)
+
+    fig.tight_layout()
+
+    # Save
+    output_dir.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_dir / "tariff_capacity.png", dpi=300)
+
+    plt.close(fig)

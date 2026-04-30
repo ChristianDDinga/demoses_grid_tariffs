@@ -13,6 +13,8 @@ from demoses_grid_tariffs.dhn_model import (
 from demoses_grid_tariffs.helper_functions import (
     get_electricity_consumption_of_assets,
     get_electricity_generation_of_assets,
+    plot_capacity_tariff,
+    plot_vol_tou_tariffs,
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -23,9 +25,18 @@ def main() -> None:
     """Builds, runs, and writes out the least-cost district heating optimization model."""
     parser = argparse.ArgumentParser(description="Build and run the least-cost district heating model.")
     parser.add_argument("--config", type=Path, required=True, help="Path to the workflow_config.yaml file.")
-    parser.add_argument("--vol-tou-tariffs", type=Path, default=None, help="Path to the volumetric TOU tariffs CSV file.")
     parser.add_argument("--input-dir", type=Path, required=True, help="Directory containing heat model inputs.")
     parser.add_argument("--output-dir", type=Path, required=True, help="Directory to save heat results.")
+    parser.add_argument(
+        "--vol-tou-tariffs", type=Path, default=None, help="Path to the volumetric TOU tariffs [€/MWh] CSV file."
+    )
+    parser.add_argument("--cap-tariff", type=float, default=None, help="Capacity tariff cost [€/MW-month].")
+    parser.add_argument(
+        "--cap-tariff-weights",
+        type=Path,
+        default=None,
+        help="Path to the monthly weighting factors CSV file for the cap tariff.",
+    )
     args = parser.parse_args()
 
     with open(args.config, "r") as f:
@@ -33,20 +44,44 @@ def main() -> None:
 
     # 1. Build and solve the least-cost model.
     if args.vol_tou_tariffs:
-        vol_tou_tariffs = pd.read_csv(args.vol_tou_tariffs)
+        vol_tou_tariffs = pd.read_csv(args.vol_tou_tariffs, index_col="snapshots", parse_dates=True)
+        plot_vol_tou_tariffs(vol_tou_tariffs, args.output_dir)
     else:
         vol_tou_tariffs = None
 
-    solved_lc_network = build_and_solve_least_cost_network(args.input_dir, config, vol_tou_tariffs)
+    if args.cap_tariff is not None:
+        cap_tariff = args.cap_tariff
+    else:
+        cap_tariff = None
 
-    # 2. Save the results to the 'least_cost' subdirectory.
-    save_network_results(solved_lc_network, args.output_dir / "least_cost")
+    if args.cap_tariff_weights:
+        cap_tariff_weights_monthly = pd.read_csv(args.cap_tariff_weights)
+    else:
+        cap_tariff_weights_monthly = None
+
+    # Raise value error if either cap_tariff or cap_tariff_weights_monthly is provided without the other one
+    if (cap_tariff is None) != (cap_tariff_weights_monthly is None):
+        raise ValueError("Both cap_tariff and cap_tariff_weights_monthly must be provided together.")
+    
+    if cap_tariff is not None and cap_tariff_weights_monthly is not None:
+        plot_capacity_tariff(cap_tariff, cap_tariff_weights_monthly, config["scenario_params"]["year"], args.output_dir)
+
+    solved_lc_network = build_and_solve_least_cost_network(
+        args.input_dir, config, vol_tou_tariffs, cap_tariff, cap_tariff_weights_monthly
+    )
+
+    # 2. Save the results to the 'output_dir' directory.
+    save_network_results(solved_lc_network, args.output_dir)
 
     logger.info(" ============ Successfully completed least-cost heat model run 🎉🎉🎉 ============ ")
 
 
 def build_and_solve_least_cost_network(
-    input_dir: Path, config: dict, vol_tou_tariffs: pd.DataFrame | None
+    input_dir: Path,
+    config: dict,
+    vol_tou_tariffs: pd.DataFrame | None,
+    cap_tariff: float | None,
+    cap_tariff_weights_monthly: pd.DataFrame | None,
 ) -> pypsa.Network:
     """Builds the district heating network model, solves for least-cost solution, and returns the solved network."""
     year = config["scenario_params"]["year"]
@@ -64,6 +99,8 @@ def build_and_solve_least_cost_network(
         static_prices=pd.read_csv(input_dir / "static_prices.csv", index_col="year"),
         snapshots=snapshots,
         vol_tou_tariffs=vol_tou_tariffs,
+        cap_tariff=cap_tariff,
+        cap_tariff_weights_monthly=cap_tariff_weights_monthly,
     )
     logger.info("Successfully built the district heating network optimization model.")
 
@@ -77,7 +114,9 @@ def build_and_solve_least_cost_network(
 
 def save_network_results(network: pypsa.Network, output_dir: Path) -> None:
     """A helper function to save the key outputs from a solved network."""
+    output_dir = output_dir / "DHN_results"
     output_dir.mkdir(parents=True, exist_ok=True)
+
     logger.info(f"Saving optimized heat network model results (including the pypsa network .nc file) to {output_dir}")
     network.statistics().to_csv(output_dir / "statistics.csv")
     network.export_to_netcdf(output_dir / "solved_pypsa_network.nc")

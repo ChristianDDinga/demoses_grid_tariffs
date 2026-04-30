@@ -3,7 +3,6 @@ import logging
 from pathlib import Path
 
 import pandas as pd
-import matplotlib.pyplot as plt
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -19,10 +18,6 @@ def main() -> None:
     demand_df = pd.read_csv(args.demand_csv, index_col="snapshots", parse_dates=True)
     vol_tou_tariffs = generate_tou_tariffs(demand_df)
     vol_tou_tariffs.to_csv(args.output_dir / "vol_tou_tariffs.csv")
-
-    # Plot and save
-    vol_tou_tariffs.plot(figsize=(14, 6), ylabel="[€/MWh]", xlabel="Snapshot", title="Volumetric TOU Tariffs")
-    plt.savefig(args.output_dir / "vol_tou_tariffs.png")
 
     logger.info(f"Successfully generated and saved volumetric TOU tariffs file in {args.output_dir} 🎉🎉🎉")
 
