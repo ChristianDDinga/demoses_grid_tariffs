@@ -13,6 +13,8 @@ from demoses_grid_tariffs.dhn_model import (
 from demoses_grid_tariffs.helper_functions import (
     get_electricity_consumption_of_assets,
     get_electricity_generation_of_assets,
+    plot_capacity_tariff,
+    plot_vol_tou_tariffs,
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -42,7 +44,8 @@ def main() -> None:
 
     # 1. Build and solve the least-cost model.
     if args.vol_tou_tariffs:
-        vol_tou_tariffs = pd.read_csv(args.vol_tou_tariffs)
+        vol_tou_tariffs = pd.read_csv(args.vol_tou_tariffs, index_col="snapshots", parse_dates=True)
+        plot_vol_tou_tariffs(vol_tou_tariffs, args.output_dir)
     else:
         vol_tou_tariffs = None
 
@@ -59,6 +62,9 @@ def main() -> None:
     # Raise value error if either cap_tariff or cap_tariff_weights_monthly is provided without the other one
     if (cap_tariff is None) != (cap_tariff_weights_monthly is None):
         raise ValueError("Both cap_tariff and cap_tariff_weights_monthly must be provided together.")
+    
+    if cap_tariff is not None and cap_tariff_weights_monthly is not None:
+        plot_capacity_tariff(cap_tariff, cap_tariff_weights_monthly, config["scenario_params"]["year"], args.output_dir)
 
     solved_lc_network = build_and_solve_least_cost_network(
         args.input_dir, config, vol_tou_tariffs, cap_tariff, cap_tariff_weights_monthly
