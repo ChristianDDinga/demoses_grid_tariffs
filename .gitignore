@@ -12,7 +12,7 @@ output/
 dev/
 *.png
 *.pdf
-input/
+input*
 
 # Distribution / packaging
 .Python
