@@ -112,6 +112,7 @@ def main():
     dhn_inputs_dir.mkdir(exist_ok=True)
     prepare_district_heating_network_inputs(config, snapshots, dhn_inputs_dir)
 
+<<<<<<< HEAD
     # # 1.2 Build and solve the district heating network optimization model
     # solved_lc_network = build_and_solve_least_cost_network(
     #     dhn_inputs_dir, config, vol_tou_tariffs, cap_tariff, cap_tariff_weights_monthly
@@ -126,6 +127,22 @@ def main():
     # dhn_results_dir_plots = dhn_results_dir / "figures"
     # dhn_results_dir_plots.mkdir(exist_ok=True)
     # plot_dhn_results(solved_lc_network, output=dhn_results_dir_plots)
+=======
+    # 1.2 Build and solve the district heating network optimization model
+    solved_lc_network = build_and_solve_least_cost_network(
+        dhn_inputs_dir, config, vol_tou_tariffs, cap_tariff, cap_tariff_weights_monthly
+    )
+
+    # 1.3 Save the district heating network optimization model results.
+    dhn_results_dir = results_dir / "dhn_results"
+    dhn_results_dir.mkdir(exist_ok=True)
+    save_network_results(solved_lc_network, dhn_results_dir)
+
+    # 1.4 Plot the district heating network optimization results.
+    dhn_results_dir_plots = dhn_results_dir / "figures"
+    dhn_results_dir_plots.mkdir(exist_ok=True)
+    plot_dhn_results(solved_lc_network, output=dhn_results_dir_plots)
+>>>>>>> ba51fe1 ([WIP] implement orchestrator)
 
     logger.info(" ============ Successfully completed district heating network model runs 🎉🎉🎉 ============ ")
 
@@ -151,6 +168,7 @@ def main():
     prosumers_results_dir = results_dir / "prosumer_results"
     prosumers_results_dir.mkdir(exist_ok=True)
 
+<<<<<<< HEAD
     logger.info(f"Running optimization for prosumers: {selected_prosumers}")
     for prosumer_name in selected_prosumers:
         prosumer = generate_prosumer_cronian_config(
@@ -158,6 +176,17 @@ def main():
             column_name=prosumer_name,
             output=prosumer_configs_dir,
         )["Prosumers"]
+=======
+    for prosumer_name in selected_prosumers:
+        generate_prosumer_cronian_config(
+            processed_substation_profiles=substation_profiles,
+            column_name=prosumer_name,
+            output=prosumer_configs_dir,
+        )
+
+        prosumer_config_path = prosumer_configs_dir / f"P0_{prosumer_name}.yaml"
+        prosumer = load_prosumer_cronian_config(prosumer_config_path)
+>>>>>>> ba51fe1 ([WIP] implement orchestrator)
 
         model = create_prosumer_optimization_model(
             prosumer=prosumer,
@@ -172,6 +201,7 @@ def main():
 
         # Extract and save results for the prosumer
         dispatch = extract_prosumer_dispatch(model, prosumer)
+<<<<<<< HEAD
 
         electric_power_attr_name = f"P0_{prosumer_name}_electric_power"
         electric_power = [-1 * pyo.value(getattr(model, electric_power_attr_name)[t]) for t in model.time]
@@ -196,6 +226,21 @@ def main():
         logger.info(f" 💯💯 💯 Successfully optimized and saved results for prosumer {prosumer_name}")
 
     exit()
+=======
+        dispatch.to_csv(prosumers_results_dir / f"{prosumer_name}_dispatch.csv")
+
+        # TODO: Fix the infeasibility of ``Laagveen_10`` and ``Nootdorp2_23`` prosumers and remove this condition.
+        if prosumer_name not in ["Laagveen_10", "Nootdorp2_23"]:  # These are currently infeasible.
+            electric_power_attr_name = f"P0_{prosumer_name}_electric_power"
+            # We reverse the sign such that +ve values are consumption from, and -ve values are injection into the grid.
+            electric_power = pd.DataFrame({
+                "snapshots": snapshots,
+                "electric_power": [-1 * pyo.value(getattr(model, electric_power_attr_name)[t]) for t in model.time]
+            }).set_index("snapshots")
+            electric_power.to_csv(prosumers_results_dir / f"{prosumer_name}_electric_power.csv")
+    
+        logger.info(f"Successfully optimized and saved results for prosumer {prosumer_name}")
+>>>>>>> ba51fe1 ([WIP] implement orchestrator)
 
     # 3. ============ Electric network power flow inputs preparation, simulation, and results saving/plotting ==========
     # Load the base electricity network excel and the links.csv which maps DHN assets to electricity network buses.
@@ -337,11 +382,18 @@ def combine_substation_prosumers_electric_power(prosumer_names: list, prosumer_r
     """
     combined_profiles = []
     for prosumer_name in prosumer_names:
+<<<<<<< HEAD
         profile_path = prosumer_results_dir / f"{prosumer_name}_dispatch.csv"
         profile_df = pd.read_csv(profile_path, index_col=0, parse_dates=True)
         electric_power_df = profile_df[["electric_power"]].copy()
         electric_power_df.rename(columns={"electric_power": prosumer_name}, inplace=True)
         combined_profiles.append(electric_power_df)
+=======
+        profile_path = prosumer_results_dir / f"{prosumer_name}_electric_power.csv"
+        profile_df = pd.read_csv(profile_path, index_col=0, parse_dates=True)
+        profile_df.rename(columns={"electric_power": prosumer_name}, inplace=True)
+        combined_profiles.append(profile_df)
+>>>>>>> ba51fe1 ([WIP] implement orchestrator)
 
     combined_profiles_df = pd.concat(combined_profiles, axis=1)
 
