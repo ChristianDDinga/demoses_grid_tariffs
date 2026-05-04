@@ -132,6 +132,7 @@ def split_bidirectional_profiles(df: pd.DataFrame) -> pd.DataFrame:
         A new DataFrame with separate, unidirectional '_load' and '_sgen' columns per original column.
     """
     logger.info("Splitting bidirectional profiles into unidirectional load and sgen columns...")
+    df = df.copy()
     # Keep only positive values for loads, set negatives to 0
     loads = df.clip(lower=0).add_suffix('_load').round(5)
     # Keep only negative values for sgens, and make them positive by taking the absolute value
