@@ -4,6 +4,7 @@ from pathlib import Path
 from cronian.base_model import create_optimization_model
 from cronian.prosumers import build_prosumer_model
 
+
 def create_prosumer_optimization_model(
     prosumer: dict,
     electricity_price: pd.DataFrame,
@@ -271,8 +272,8 @@ def generate_prosumer_cronian_config(
       behavior_type: converter
       input: electricity
       output: some_carrier
-      installed_capacity: {max_load * 1.005:.0f}
-      efficiency: 1.0
+      installed_capacity: {max_load * 1.1:.0f}
+      efficiency: 0.99
     battery:
       behavior_type: storage
       input: electricity
