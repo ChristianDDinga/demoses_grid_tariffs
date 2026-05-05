@@ -1,5 +1,7 @@
 import pandas as pd
 import pyomo.environ as pyo
+import yaml
+
 from pathlib import Path
 from cronian.base_model import create_optimization_model
 from cronian.prosumers import build_prosumer_model
@@ -198,7 +200,7 @@ def get_capacity_tariff_cost(model: pyo.ConcreteModel) -> pyo.Expression:
 
 def generate_prosumer_cronian_config(
     processed_substation_profiles: pd.DataFrame, column_name: str, flex_factor: float = 0.2, output: Path = None
-) -> str:
+) -> dict:
     """
     Generates a Cronian configuration for the specified (column_name) substation prosumer.
 
@@ -249,6 +251,10 @@ def generate_prosumer_cronian_config(
         flex_factor: A factor that determines the size of the battery storage
             relative to the load profile.
         output: Optional path to save the generated YAML string as a file.
+
+    Returns:
+    --------
+        A dictionary representing the Cronian configuration for the prosumer.
     """
     df = processed_substation_profiles.copy()
     load_col = f"{column_name}_load"
@@ -258,46 +264,57 @@ def generate_prosumer_cronian_config(
     max_sgen = df[sgen_col].max()
     sum_load = df[load_col].sum()
 
-    yaml_str = f"""Prosumers:
-  name: {column_name}
-  id: P0_{column_name}
-  demand:
-    sub_station_demand:
-      carrier: some_carrier
-      base:
-        n_profile: {load_col}
-        peak: 1
-  assets:
-    generic_asset:
-      behavior_type: converter
-      input: electricity
-      output: some_carrier
-      installed_capacity: {max_load * 1.1:.0f}
-      efficiency: 0.99
-    battery:
-      behavior_type: storage
-      input: electricity
-      output: electricity
-      energy_capacity: {sum_load * 0.05:.0f}
-      initial_energy: 0
-      charge_capacity: {max_sgen + max_load * flex_factor:.0f}
-      discharge_capacity: {max_sgen + max_load * flex_factor:.0f}
-      charge_efficiency: 0.95
-      discharge_efficiency: 0.95
-    solar_pv:
-      behavior_type: generator
-      input: light
-      output: electricity
-      installed_capacity: 1
-      availability_factor: {sgen_col}
-      operational_costs:
-        marginal_cost_linear: 0.0
-        marginal_cost_quadratic: 0.0
-    """
-    # If output path is provided, write the yaml string to a file named {P0_{column_name}.yaml in the output directory
+    config = {
+        "Prosumers": {
+            "name": column_name,
+            "id": f"P0_{column_name}",
+            "demand": {
+                "sub_station_demand": {
+                    "carrier": "some_carrier",
+                    "base": {
+                        "n_profile": load_col,
+                        "peak": 1
+                    }
+                }
+            },
+            "assets": {
+                "generic_asset": {
+                    "behavior_type": "converter",
+                    "input": "electricity",
+                    "output": "some_carrier",
+                    "installed_capacity": float(f"{max_load * 1.1:.0f}"),
+                    "efficiency": 0.99
+                },
+                "battery": {
+                    "behavior_type": "storage",
+                    "input": "electricity",
+                    "output": "electricity",
+                    "energy_capacity": float(f"{sum_load * 0.05:.0f}"),
+                    "initial_energy": 0,
+                    "charge_capacity": float(f"{max_sgen + max_load * flex_factor:.0f}"),
+                    "discharge_capacity": float(f"{max_sgen + max_load * flex_factor:.0f}"),
+                    "charge_efficiency": 0.95,
+                    "discharge_efficiency": 0.95
+                },
+                "solar_pv": {
+                    "behavior_type": "generator",
+                    "input": "light",
+                    "output": "electricity",
+                    "installed_capacity": 1,
+                    "availability_factor": sgen_col,
+                    "operational_costs": {
+                        "marginal_cost_linear": 0.0,
+                        "marginal_cost_quadratic": 0.0
+                    }
+                }
+            }
+        }
+    }
+
     if output:
         output_path = output / f"P0_{column_name}.yaml"
         with open(output_path, "w") as f:
-            f.write(yaml_str)
+            # Set sort_keys=False to keep the order in the output file
+            yaml.dump(config, f, sort_keys=False, default_flow_style=False)
 
-    return yaml_str
+    return config
