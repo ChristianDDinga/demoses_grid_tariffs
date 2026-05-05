@@ -199,7 +199,7 @@ def get_capacity_tariff_cost(model: pyo.ConcreteModel) -> pyo.Expression:
 
 
 def generate_prosumer_cronian_config(
-    processed_substation_profiles: pd.DataFrame, column_name: str, flex_factor: float = 0.2, output: Path = None
+    splitted_substation_profiles: pd.DataFrame, column_name: str, flex_factor: float = 0.2, output: Path = None
 ) -> dict:
     """
     Generates a Cronian configuration for the specified (column_name) substation prosumer.
@@ -220,16 +220,16 @@ def generate_prosumer_cronian_config(
                 behavior_type: converter
                 input: electricity
                 output: some_carrier
-                installed_capacity: <max_value_of_column_name_load * 1.02>
-                efficiency: 1.0
+                installed_capacity: <specified_value>
+                efficiency: 0.99
             battery:
                 behavior_type: storage
                 input: electricity
                 output: electricity
-                energy_capacity: <sum_of_column_name_load * 0.05>
+                energy_capacity: <specified_value>
                 initial_energy: 0
-                charge_capacity: <max_of_column_name_sgen + max_of_column_name_load * flex_factor>
-                discharge_capacity: <max_of_column_name_sgen + max_of_column_name_load * flex_factor>
+                charge_capacity: <specified_value>
+                discharge_capacity: <specified_value>
                 charge_efficiency: 0.95
                 discharge_efficiency: 0.95
             solar_pv:
@@ -244,8 +244,8 @@ def generate_prosumer_cronian_config(
 
     Args:
     -----
-        processed_substation_profiles: DataFrame containing the load
-            (column_name_load) and generation (column_name_sgen) of substations.
+        splitted_substation_profiles: DataFrame containing the split profiles of
+        substations (column_name_load and column_name_sgen).
         column_name: The base name of the columns in the DataFrame that contain
             the load and generation profiles.
         flex_factor: A factor that determines the size of the battery storage
@@ -256,13 +256,19 @@ def generate_prosumer_cronian_config(
     --------
         A dictionary representing the Cronian configuration for the prosumer.
     """
-    df = processed_substation_profiles.copy()
+    df = splitted_substation_profiles.copy()
     load_col = f"{column_name}_load"
     sgen_col = f"{column_name}_sgen"
 
     max_load = df[load_col].max()
     max_sgen = df[sgen_col].max()
     sum_load = df[load_col].sum()
+
+    generic_asset_cap = float(f"{max_load * 1.1:.0f}") if max_load > 5.0 else 5.0
+    battery_energy_cap = float(f"{sum_load * 0.05:.0f}") if sum_load > 500.0 else 500.0
+    battery_power_cap = (
+        float(f"{max_sgen + max_load * flex_factor:.0f}") if max_sgen + max_load * flex_factor > 10.0 else 10.0
+    )
 
     config = {
         "Prosumers": {
@@ -282,17 +288,17 @@ def generate_prosumer_cronian_config(
                     "behavior_type": "converter",
                     "input": "electricity",
                     "output": "some_carrier",
-                    "installed_capacity": float(f"{max_load * 1.1:.0f}"),
+                    "installed_capacity": generic_asset_cap,
                     "efficiency": 0.99
                 },
                 "battery": {
                     "behavior_type": "storage",
                     "input": "electricity",
                     "output": "electricity",
-                    "energy_capacity": float(f"{sum_load * 0.05:.0f}"),
+                    "energy_capacity": battery_energy_cap,
                     "initial_energy": 0,
-                    "charge_capacity": float(f"{max_sgen + max_load * flex_factor:.0f}"),
-                    "discharge_capacity": float(f"{max_sgen + max_load * flex_factor:.0f}"),
+                    "charge_capacity": battery_power_cap,
+                    "discharge_capacity": battery_power_cap,
                     "charge_efficiency": 0.95,
                     "discharge_efficiency": 0.95
                 },
