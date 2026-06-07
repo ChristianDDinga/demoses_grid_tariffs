@@ -29,86 +29,101 @@ STEDIN_2026_VOLUMETRIC_EUR_PER_MWH = {
 def main() -> None:
     """Generate a scenario's grid-tariff parameter files into its results inputs folder.
 
-    Given a scenario config and a withdrawal weighting schedule, this writes all tariff parameter
-    files into ``results/<config-stem>/inputs/tariff_params/``:
-      - weighting_factors_withdrawal.csv  (copy of the input schedule, for provenance)
-      - weighting_factors_injection.csv   (reversed/rank-mirrored injection schedule)
-      - weights_withdrawal.csv, weights_injection.csv   (8760-hour capacity weight profiles)
-      - vol_flat.csv, vol_tou_withdrawal.csv, vol_tou_injection.csv   (volumetric profiles, EUR/MWh)
-      - figures/weighting_heatmap.png
+    Generation settings are read from the scenario config's ``tariffs.generation`` block:
+      withdrawal_schedule, base_rate_eur_per_mwh, base_year, target_year, annual_growth_rate,
+      include_holidays. Each can be overridden on the command line. The run year and number of
+      snapshots come from the config (scenario_params.year, model_params.num_snapshots).
 
-    The run year and number of snapshots are read from the config (scenario_params.year and
-    model_params.num_snapshots) unless overridden. Escalate the 2026 base levels to the run year
-    with --annual-growth-rate (see escalation_factor for FIEN26 values).
+    Outputs into ``results/<config-stem>/inputs/tariff_params/``:
+      weighting_factors_withdrawal.csv, weighting_factors_injection.csv,
+      weights_withdrawal.csv, weights_injection.csv,
+      vol_flat.csv, vol_tou_withdrawal.csv, vol_tou_injection.csv, figures/weighting_heatmap.png
 
     Example:
         python src/demoses_grid_tariffs/generate_tariffs.py \
-            --config configs/scenarios/scenario_5_tou_capacity_both.yaml \
-            --withdrawal-schedule data/weighting_factors_distribution.csv \
-            --base-rate 19.8 --annual-growth-rate 0.0
+            --config configs/scenarios/scenario_5_tou_capacity_both.yaml
     """
     parser = argparse.ArgumentParser(description="Generate a scenario's grid-tariff parameter files.")
     parser.add_argument(
         "--config", type=Path, required=True,
-        help="Scenario config YAML; its stem names the output folder and provides year/num_snapshots.",
+        help="Scenario config YAML. Provides tariffs.generation settings, year and num_snapshots; "
+        "its stem names the output folder.",
     )
     parser.add_argument(
-        "--withdrawal-schedule", type=Path, required=True,
-        help="Withdrawal weighting schedule CSV, e.g. data/weighting_factors_distribution.csv.",
+        "--withdrawal-schedule", type=Path, default=None,
+        help="Override tariffs.generation.withdrawal_schedule (month x hour schedule CSV).",
     )
     parser.add_argument(
-        "--base-rate", type=float, default=STEDIN_2026_VOLUMETRIC_EUR_PER_MWH["MS"],
-        help="Base volumetric rate EUR/MWh (default: Stedin 2026 MS = 19.8).",
+        "--base-rate", type=float, default=None,
+        help="Override tariffs.generation.base_rate_eur_per_mwh (default Stedin 2026 MS = 19.8).",
     )
-    parser.add_argument("--base-year", type=int, default=2026, help="Year the base levels refer to (default 2026).")
+    parser.add_argument("--base-year", type=int, default=None, help="Override tariffs.generation.base_year (default 2026).")
     parser.add_argument(
-        "--annual-growth-rate", type=float, default=0.0,
-        help="Real CAGR to escalate base_year -> run year (FIEN26 ~3.7-6.3 pct/yr; see escalation_factor).",
-    )
-    parser.add_argument(
-        "--year", type=int, default=None, help="Override run year (default: config scenario_params.year)."
+        "--target-year", type=int, default=None,
+        help="Override tariffs.generation.target_year for escalation (default: scenario year).",
     )
     parser.add_argument(
-        "--num-snapshots", type=int, default=None,
-        help="Override number of snapshots (default: config model_params.num_snapshots).",
+        "--annual-growth-rate", type=float, default=None,
+        help="Override tariffs.generation.annual_growth_rate (real CAGR; FIEN26 ~0.037-0.063).",
     )
-    parser.add_argument("--no-holidays", action="store_true", help="Do not treat Dutch public holidays as weekend.")
+    parser.add_argument("--num-snapshots", type=int, default=None, help="Override config model_params.num_snapshots.")
+    parser.add_argument(
+        "--no-holidays", action="store_true", help="Force: do not treat Dutch public holidays as weekend."
+    )
     args = parser.parse_args()
 
     with open(args.config, "r") as f:
         config = yaml.safe_load(f)
-    year = args.year if args.year is not None else int(config["scenario_params"]["year"])
+    gen = (config.get("tariffs", {}) or {}).get("generation", {}) or {}
+
+    run_year = int(config["scenario_params"]["year"])
     num_snapshots = (
         args.num_snapshots if args.num_snapshots is not None else int(config["model_params"]["num_snapshots"])
     )
-    include_holidays = not args.no_holidays
+
+    def pick(cli_value, key, default):
+        """CLI value (if given) overrides the config generation block, which overrides the default."""
+        return cli_value if cli_value is not None else gen.get(key, default)
+
+    schedule_in = args.withdrawal_schedule or gen.get("withdrawal_schedule")
+    if schedule_in is None:
+        raise SystemExit(
+            "No withdrawal schedule: set tariffs.generation.withdrawal_schedule in the config "
+            "or pass --withdrawal-schedule."
+        )
+    schedule_in = Path(schedule_in)
+    base_rate = float(pick(args.base_rate, "base_rate_eur_per_mwh", STEDIN_2026_VOLUMETRIC_EUR_PER_MWH["MS"]))
+    base_year = int(pick(args.base_year, "base_year", 2026))
+    target_year = int(pick(args.target_year, "target_year", run_year))
+    annual_growth_rate = float(pick(args.annual_growth_rate, "annual_growth_rate", 0.0))
+    include_holidays = bool(gen.get("include_holidays", True)) and not args.no_holidays
 
     out_dir = here() / "results" / args.config.stem / "inputs" / "tariff_params"
     fig_dir = out_dir / "figures"
     out_dir.mkdir(parents=True, exist_ok=True)
     fig_dir.mkdir(parents=True, exist_ok=True)
 
-    snapshots = pd.date_range(start=f"{year}-01-01 00:00:00", periods=num_snapshots, freq="h")
+    snapshots = pd.date_range(start=f"{run_year}-01-01 00:00:00", periods=num_snapshots, freq="h")
 
     # Schedules: keep a copy of the withdrawal schedule for provenance and derive the injection one.
     withdrawal_schedule = out_dir / "weighting_factors_withdrawal.csv"
     injection_schedule = out_dir / "weighting_factors_injection.csv"
-    shutil.copyfile(args.withdrawal_schedule, withdrawal_schedule)
-    reverse_weight_schedule(args.withdrawal_schedule, injection_schedule)
+    shutil.copyfile(schedule_in, withdrawal_schedule)
+    reverse_weight_schedule(schedule_in, injection_schedule)
 
     # Capacity weight profiles (withdrawal + injection).
-    write_weight_profile(withdrawal_schedule, year, num_snapshots, out_dir / "weights_withdrawal.csv", include_holidays)
-    write_weight_profile(injection_schedule, year, num_snapshots, out_dir / "weights_injection.csv", include_holidays)
+    write_weight_profile(withdrawal_schedule, run_year, num_snapshots, out_dir / "weights_withdrawal.csv", include_holidays)
+    write_weight_profile(injection_schedule, run_year, num_snapshots, out_dir / "weights_injection.csv", include_holidays)
 
-    # Volumetric profiles (flat base case + ToU withdrawal + ToU injection).
+    # Volumetric profiles (flat base case + ToU withdrawal + ToU injection), escalated base_year -> target_year.
     generate_flat_vol_tariff(
-        snapshots, args.base_rate, args.base_year, year, args.annual_growth_rate
+        snapshots, base_rate, base_year, target_year, annual_growth_rate
     ).rename_axis("snapshots").to_csv(out_dir / "vol_flat.csv")
     generate_tou_vol_tariffs(
-        snapshots, withdrawal_schedule, args.base_rate, args.base_year, year, args.annual_growth_rate, include_holidays
+        snapshots, withdrawal_schedule, base_rate, base_year, target_year, annual_growth_rate, include_holidays
     ).rename_axis("snapshots").to_csv(out_dir / "vol_tou_withdrawal.csv")
     generate_tou_vol_tariffs(
-        snapshots, injection_schedule, args.base_rate, args.base_year, year, args.annual_growth_rate, include_holidays
+        snapshots, injection_schedule, base_rate, base_year, target_year, annual_growth_rate, include_holidays
     ).rename_axis("snapshots").to_csv(out_dir / "vol_tou_injection.csv")
 
     # Comparison heatmap (withdrawal vs reversed injection).
@@ -118,7 +133,8 @@ def main() -> None:
         title=f"{args.config.stem}: capacity-tariff weighting (withdrawal vs injection)",
     )
     logger.info(
-        f"Tariff params for '{args.config.stem}' written to {out_dir} (year {year}, growth {args.annual_growth_rate})."
+        f"Tariff params for '{args.config.stem}' -> {out_dir} (run_year={run_year}, base_year={base_year}, "
+        f"target_year={target_year}, growth={annual_growth_rate}, base_rate={base_rate})."
     )
 
 
