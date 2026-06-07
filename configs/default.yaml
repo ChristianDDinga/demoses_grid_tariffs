@@ -58,7 +58,7 @@ scenario_adjustments:
 
   electricity_price_settings:
     scaling_factor: 1.7  # Factor to increase/decrease electricity prices
-    max_price: 1000  # Maximum electricity price (€/MWh) to clip extreme values
+    max_price: 400  # Maximum electricity price (€/MWh) to clip extreme values
 
   hydrogen_price_settings:
     scaling_factor: 2.8  # Factor to increase/decrease hydrogen prices

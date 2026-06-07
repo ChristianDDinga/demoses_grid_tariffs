@@ -70,11 +70,11 @@ def generate_tou_tariffs(demand_df: pd.DataFrame) -> pd.DataFrame:
     }
 
     # 4. Apply the pricing logic
-    df['vol_tou_tariff'] = df.apply(
+    df['vol_tou_tariffs'] = df.apply(
         lambda row: prices[row['is_winter']][row['peak_type']], axis=1
     )
 
-    return df[['vol_tou_tariff']]
+    return df[['vol_tou_tariffs']]
 
 
 if __name__ == "__main__":

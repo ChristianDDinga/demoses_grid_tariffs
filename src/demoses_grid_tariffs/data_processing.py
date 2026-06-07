@@ -363,7 +363,7 @@ def copy_files_describing_pypsa_heat_network(data_sources: dict, scenario_params
 
     # If heat_network_path Excel file convert CSVs first, else copy directly
     if heat_network_path.suffix in [".xls", ".xlsx", ".xlsm"]:
-        network_destination_dir.mkdir(parents=True, exist_ok=False)
+        network_destination_dir.mkdir(parents=True, exist_ok=True)
         generate_pypsa_network_csvs_from_excel(heat_network_path, EXCEL_SHEETS, network_destination_dir)
     else:
         shutil.copytree(heat_network_path, network_destination_dir)
