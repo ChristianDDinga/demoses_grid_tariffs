@@ -403,7 +403,7 @@ def add_volumetric_tou_tariffs(n: pypsa.Network, vol_tou_tariffs: pd.DataFrame) 
         The PyPSA network object with added volumetric TOU tariff links.
     """
     elec_cost_with_vol_tou_tariff = (
-        n.generators_t.marginal_cost["electricity_supply"].values + vol_tou_tariffs["vol_tou_tariff"].values
+        n.generators_t.marginal_cost["electricity_supply"].values + vol_tou_tariffs["vol_tou_tariffs"].values
     )
 
     n.generators_t.marginal_cost["electricity_supply"] = elec_cost_with_vol_tou_tariff
