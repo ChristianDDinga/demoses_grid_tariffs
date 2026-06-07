@@ -57,7 +57,9 @@ def main() -> None:
         "--base-rate", type=float, default=None,
         help="Override tariffs.generation.base_rate_eur_per_mwh (default Stedin 2026 MS = 19.8).",
     )
-    parser.add_argument("--base-year", type=int, default=None, help="Override tariffs.generation.base_year (default 2026).")
+    parser.add_argument(
+        "--base-year", type=int, default=None, help="Override tariffs.generation.base_year (default 2026)."
+    )
     parser.add_argument(
         "--target-year", type=int, default=None,
         help="Override tariffs.generation.target_year for escalation (default: scenario year).",
@@ -112,8 +114,12 @@ def main() -> None:
     reverse_weight_schedule(schedule_in, injection_schedule)
 
     # Capacity weight profiles (withdrawal + injection).
-    write_weight_profile(withdrawal_schedule, run_year, num_snapshots, out_dir / "weights_withdrawal.csv", include_holidays)
-    write_weight_profile(injection_schedule, run_year, num_snapshots, out_dir / "weights_injection.csv", include_holidays)
+    write_weight_profile(
+        withdrawal_schedule, run_year, num_snapshots, out_dir / "weights_withdrawal.csv", include_holidays
+    )
+    write_weight_profile(
+        injection_schedule, run_year, num_snapshots, out_dir / "weights_injection.csv", include_holidays
+    )
 
     # Volumetric profiles (flat base case + ToU withdrawal + ToU injection), escalated base_year -> target_year.
     generate_flat_vol_tariff(
