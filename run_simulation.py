@@ -14,7 +14,7 @@ from demoses_grid_tariffs.data_processing import (
 )
 
 from demoses_grid_tariffs.dhn_plots import plot_dhn_results
-from demoses_grid_tariffs.helper_functions import fill_path_wildcards, plot_capacity_tariff, plot_vol_tou_tariffs
+from demoses_grid_tariffs.helper_functions import fill_path_wildcards
 from demoses_grid_tariffs.plot_electricity_results import plot_electricity_results
 from demoses_grid_tariffs.prepare_dhn_input import plot_heat_input_data
 from demoses_grid_tariffs.prepare_electricity_input import (
@@ -27,6 +27,7 @@ from demoses_grid_tariffs.substation_prosumers import (
     generate_prosumer_cronian_config,
     create_prosumer_optimization_model,
 )
+from demoses_grid_tariffs.tariffs import add_tariff_cli_arguments, load_tariffs, tariff_cli_overrides
 
 
 logging.basicConfig(level=logging.INFO)
@@ -60,16 +61,7 @@ def main():
         default=None,
         help="Directory containing base case power flow results used for making relative comparisons.",
     )
-    parser.add_argument(
-        "--vol-tou-tariffs", type=Path, default=None, help="Path to the volumetric TOU tariffs [€/MWh] CSV file."
-    )
-    parser.add_argument("--cap-tariff", type=float, default=None, help="Capacity tariff cost [€/MW-month].")
-    parser.add_argument(
-        "--cap-tariff-weights",
-        type=Path,
-        default=None,
-        help="Path to the monthly weighting factors CSV file for the cap tariff.",
-    )
+    add_tariff_cli_arguments(parser)
     args = parser.parse_args()
 
     # Setup main directories where inputs and results will be saved
@@ -89,22 +81,8 @@ def main():
     year = scenario_params["year"]
     snapshots = pd.date_range(start=f"{year}-01-01 00:00:00", periods=num_snapshots, freq="h")
 
-    # Process tariff
-    # Raise value error if either cap_tariff or cap_tariff_weights_monthly is provided without the other one
-    if (args.cap_tariff is None) != (args.cap_tariff_weights is None):
-        raise ValueError("Both cap_tariff and cap_tariff_weights must be provided together.")
-
-    vol_tou_tariffs = pd.read_csv(args.vol_tou_tariffs, index_col="snapshots", parse_dates=True) if args.vol_tou_tariffs else None
-    cap_tariff = args.cap_tariff if args.cap_tariff else None
-    cap_tariff_weights_monthly = pd.read_csv(args.cap_tariff_weights) if args.cap_tariff_weights else None
-    
-    if args.vol_tou_tariffs is not None:
-        plot_vol_tou_tariffs(vol_tou_tariffs, data_dir)
-        logger.info("Successfully plotted volumetric TOU tariffs")
-
-    if cap_tariff is not None and cap_tariff_weights_monthly is not None:
-        plot_capacity_tariff(cap_tariff, cap_tariff_weights_monthly, year, data_dir)
-        logger.info("Successfully plotted capacity network tariff")
+    # Load grid tariffs from the YAML 'tariffs' block, overridden by any CLI flags.
+    tariffs = load_tariffs(config, snapshots, tariff_cli_overrides(args), base_dir=data_dir / "tariff_params")
 
     # 1. ============ District heating network inputs preparation, optimization, and results saving/plotting ===========
     # 1.1 DHN inputs preparation
@@ -113,9 +91,7 @@ def main():
     prepare_district_heating_network_inputs(config, snapshots, dhn_inputs_dir)
 
     # # 1.2 Build and solve the district heating network optimization model
-    solved_lc_network = build_and_solve_least_cost_network(
-        dhn_inputs_dir, config, vol_tou_tariffs, cap_tariff, cap_tariff_weights_monthly
-    )
+    solved_lc_network = build_and_solve_least_cost_network(dhn_inputs_dir, config, tariffs)
 
     # 1.3 Save the district heating network optimization model results.
     dhn_results_dir = results_dir / "dhn_results"
@@ -159,13 +135,14 @@ def main():
             output=prosumer_configs_dir,
         )["Prosumers"]
 
+        electricity_price_prosumer = pd.read_csv(
+            dhn_inputs_dir / "electricity_price.csv", index_col=0, parse_dates=True
+        ).iloc[:num_snapshots]
         model = create_prosumer_optimization_model(
             prosumer=prosumer,
-            electricity_price=pd.read_csv(dhn_inputs_dir / "electricity_price.csv", index_col=0, parse_dates=True),
+            electricity_price=electricity_price_prosumer,
             timeseries_data=substation_profiles,
-            vol_tou_tariffs_demand=vol_tou_tariffs,
-            cap_tariff=cap_tariff,
-            cap_tariff_weights_monthly=cap_tariff_weights_monthly,
+            tariffs=tariffs,
         )
 
         solver.solve(model)
