@@ -65,7 +65,9 @@ def main() -> None:
         "--annual-growth-rate", type=float, default=0.0,
         help="Real CAGR to escalate base_year -> run year (FIEN26 ~3.7-6.3 pct/yr; see escalation_factor).",
     )
-    parser.add_argument("--year", type=int, default=None, help="Override run year (default: config scenario_params.year).")
+    parser.add_argument(
+        "--year", type=int, default=None, help="Override run year (default: config scenario_params.year)."
+    )
     parser.add_argument(
         "--num-snapshots", type=int, default=None,
         help="Override number of snapshots (default: config model_params.num_snapshots).",
@@ -115,7 +117,9 @@ def main() -> None:
         fig_dir / "weighting_heatmap.png",
         title=f"{args.config.stem}: capacity-tariff weighting (withdrawal vs injection)",
     )
-    logger.info(f"Tariff params for '{args.config.stem}' written to {out_dir} (year {year}, growth {args.annual_growth_rate}).")
+    logger.info(
+        f"Tariff params for '{args.config.stem}' written to {out_dir} (year {year}, growth {args.annual_growth_rate})."
+    )
 
 
 def escalation_factor(base_year: int, target_year: int, annual_growth_rate: float) -> float:
