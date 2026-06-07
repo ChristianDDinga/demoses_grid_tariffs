@@ -113,19 +113,19 @@ def main():
     prepare_district_heating_network_inputs(config, snapshots, dhn_inputs_dir)
 
     # # 1.2 Build and solve the district heating network optimization model
-    # solved_lc_network = build_and_solve_least_cost_network(
-    #     dhn_inputs_dir, config, vol_tou_tariffs, cap_tariff, cap_tariff_weights_monthly
-    # )
+    solved_lc_network = build_and_solve_least_cost_network(
+        dhn_inputs_dir, config, vol_tou_tariffs, cap_tariff, cap_tariff_weights_monthly
+    )
 
-    # # 1.3 Save the district heating network optimization model results.
-    # dhn_results_dir = results_dir / "dhn_results"
-    # dhn_results_dir.mkdir(exist_ok=True)
-    # save_network_results(solved_lc_network, dhn_results_dir)
+    # 1.3 Save the district heating network optimization model results.
+    dhn_results_dir = results_dir / "dhn_results"
+    dhn_results_dir.mkdir(exist_ok=True)
+    save_network_results(solved_lc_network, dhn_results_dir)
 
-    # # 1.4 Plot the district heating network optimization results.
-    # dhn_results_dir_plots = dhn_results_dir / "figures"
-    # dhn_results_dir_plots.mkdir(exist_ok=True)
-    # plot_dhn_results(solved_lc_network, output=dhn_results_dir_plots)
+    # 1.4 Plot the district heating network optimization results.
+    dhn_results_dir_plots = dhn_results_dir / "figures"
+    dhn_results_dir_plots.mkdir(exist_ok=True)
+    plot_dhn_results(solved_lc_network, output=dhn_results_dir_plots)
 
     logger.info(" ============ Successfully completed district heating network model runs 🎉🎉🎉 ============ ")
 
@@ -151,7 +151,7 @@ def main():
     prosumers_results_dir = results_dir / "prosumer_results"
     prosumers_results_dir.mkdir(exist_ok=True)
 
-    logger.info(f"Running optimization for prosumers: {selected_prosumers}")
+    logger.info(f"📈 📈 📈 Running optimization for prosumers: {selected_prosumers}")
     for prosumer_name in selected_prosumers:
         prosumer = generate_prosumer_cronian_config(
             splitted_substation_profiles=substation_profiles,
@@ -172,30 +172,12 @@ def main():
 
         # Extract and save results for the prosumer
         dispatch = extract_prosumer_dispatch(model, prosumer)
-
         electric_power_attr_name = f"P0_{prosumer_name}_electric_power"
         electric_power = [-1 * pyo.value(getattr(model, electric_power_attr_name)[t]) for t in model.time]
         dispatch["electric_power"] = electric_power
         dispatch.to_csv(prosumers_results_dir / f"{prosumer_name}_dispatch.csv")
-
-        # if prosumer_name == "Nootdorp2_23":
-        #    print(f"Dispatch for {prosumer_name}:")
-        #    print(dispatch)
-        #    break
-
-        # # TODO: Fix the infeasibility of ``Laagveen_10`` and ``Nootdorp2_23`` prosumers and remove this condition.
-        # if prosumer_name not in ["Laagveen_10", "Nootdorp2_23"]:  # These are currently infeasible.
-        #     electric_power_attr_name = f"P0_{prosumer_name}_electric_power"
-        #     # We reverse the sign such that +ve values are consumption from, and -ve values are injection into the grid.
-        #     electric_power = pd.DataFrame({
-        #         "snapshots": snapshots,
-        #         "electric_power": [-1 * pyo.value(getattr(model, electric_power_attr_name)[t]) for t in model.time]
-        #     }).set_index("snapshots")
-        #     electric_power.to_csv(prosumers_results_dir / f"{prosumer_name}_electric_power.csv")
     
-        logger.info(f" 💯💯 💯 Successfully optimized and saved results for prosumer {prosumer_name}")
-
-    exit()
+        logger.info(f" 👏👏👏 Successfully optimized and saved results for prosumer {prosumer_name}")
 
     # 3. ============ Electric network power flow inputs preparation, simulation, and results saving/plotting ==========
     # Load the base electricity network excel and the links.csv which maps DHN assets to electricity network buses.
@@ -285,7 +267,7 @@ def main():
     except Exception as e:
         logger.error(f"Could not copy workflow config file {args.config}. Error: {e}")
 
-    logger.info(" 🎉🎉🎉 Done! ... Successfully completed the entire workflow 🎉🎉🎉 ")
+    logger.info(" 💯💯 💯 Done! ... Successfully completed the entire workflow 🎉🎉🎉 ")
 
 
 def prepare_district_heating_network_inputs(config: dict, snapshots: pd.DatetimeIndex, output_dir: Path) -> None:
