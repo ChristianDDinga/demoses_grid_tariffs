@@ -13,8 +13,12 @@ from demoses_grid_tariffs.dhn_model import (
 from demoses_grid_tariffs.helper_functions import (
     get_electricity_consumption_of_assets,
     get_electricity_generation_of_assets,
-    plot_capacity_tariff,
-    plot_vol_tou_tariffs,
+)
+from demoses_grid_tariffs.tariffs import (
+    Tariffs,
+    add_tariff_cli_arguments,
+    load_tariffs,
+    tariff_cli_overrides,
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -27,48 +31,21 @@ def main() -> None:
     parser.add_argument("--config", type=Path, required=True, help="Path to the workflow_config.yaml file.")
     parser.add_argument("--input-dir", type=Path, required=True, help="Directory containing heat model inputs.")
     parser.add_argument("--output-dir", type=Path, required=True, help="Directory to save heat results.")
-    parser.add_argument(
-        "--vol-tou-tariffs", type=Path, default=None, help="Path to the volumetric TOU tariffs [€/MWh] CSV file."
-    )
-    parser.add_argument("--cap-tariff", type=float, default=None, help="Capacity tariff cost [€/MW-month].")
-    parser.add_argument(
-        "--cap-tariff-weights",
-        type=Path,
-        default=None,
-        help="Path to the monthly weighting factors CSV file for the cap tariff.",
-    )
+    add_tariff_cli_arguments(parser)
     args = parser.parse_args()
 
     with open(args.config, "r") as f:
         config = yaml.safe_load(f)
 
+    year = config["scenario_params"]["year"]
+    num_snapshots = config["model_params"]["num_snapshots"]
+    snapshots = pd.date_range(start=f"{year}-01-01 00:00:00", periods=num_snapshots, freq="h")
+
+    # Load grid tariffs from the YAML 'tariffs' block, overridden by any CLI flags.
+    tariffs = load_tariffs(config, snapshots, tariff_cli_overrides(args))
+
     # 1. Build and solve the least-cost model.
-    if args.vol_tou_tariffs:
-        vol_tou_tariffs = pd.read_csv(args.vol_tou_tariffs, index_col="snapshots", parse_dates=True)
-        plot_vol_tou_tariffs(vol_tou_tariffs, args.output_dir)
-    else:
-        vol_tou_tariffs = None
-
-    if args.cap_tariff is not None:
-        cap_tariff = args.cap_tariff
-    else:
-        cap_tariff = None
-
-    if args.cap_tariff_weights:
-        cap_tariff_weights_monthly = pd.read_csv(args.cap_tariff_weights)
-    else:
-        cap_tariff_weights_monthly = None
-
-    # Raise value error if either cap_tariff or cap_tariff_weights_monthly is provided without the other one
-    if (cap_tariff is None) != (cap_tariff_weights_monthly is None):
-        raise ValueError("Both cap_tariff and cap_tariff_weights_monthly must be provided together.")
-    
-    if cap_tariff is not None and cap_tariff_weights_monthly is not None:
-        plot_capacity_tariff(cap_tariff, cap_tariff_weights_monthly, config["scenario_params"]["year"], args.output_dir)
-
-    solved_lc_network = build_and_solve_least_cost_network(
-        args.input_dir, config, vol_tou_tariffs, cap_tariff, cap_tariff_weights_monthly
-    )
+    solved_lc_network = build_and_solve_least_cost_network(args.input_dir, config, tariffs)
 
     # 2. Save the results to the 'output_dir' directory.
     save_network_results(solved_lc_network, args.output_dir)
@@ -79,9 +56,7 @@ def main() -> None:
 def build_and_solve_least_cost_network(
     input_dir: Path,
     config: dict,
-    vol_tou_tariffs: pd.DataFrame | None,
-    cap_tariff: float | None,
-    cap_tariff_weights_monthly: pd.DataFrame | None,
+    tariffs: Tariffs | None = None,
 ) -> pypsa.Network:
     """Builds the district heating network model, solves for least-cost solution, and returns the solved network."""
     year = config["scenario_params"]["year"]
@@ -98,9 +73,7 @@ def build_and_solve_least_cost_network(
         solar_availability=pd.read_csv(input_dir / "solar_availability.csv", index_col="snapshots", parse_dates=True),
         static_prices=pd.read_csv(input_dir / "static_prices.csv", index_col="year"),
         snapshots=snapshots,
-        vol_tou_tariffs=vol_tou_tariffs,
-        cap_tariff=cap_tariff,
-        cap_tariff_weights_monthly=cap_tariff_weights_monthly,
+        tariffs=tariffs,
     )
     logger.info("Successfully built the district heating network optimization model.")
 

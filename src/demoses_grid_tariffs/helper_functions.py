@@ -126,6 +126,23 @@ def get_electricity_consumption_of_assets(n: pypsa.Network) -> pd.DataFrame:
     return electricity_consumption_df
 
 
+def get_chp_assets(n: pypsa.Network) -> list[str]:
+    """Return the list of CHP link assets that inject electricity into the grid.
+    
+    Args:
+    -----
+        n: PyPSA network object.
+
+    Returns:
+    --------
+        List of asset names for CHP links that inject electricity into the grid.
+    """
+    chp_assets = []
+    for carrier in CARRIERS_ELEC_PROD_LINKS:
+        chp_assets.extend(get_assets_based_on_carrier_name(n, "Link", carrier))
+    return chp_assets
+
+
 def fill_path_wildcards(path_template: str | Path, params: dict) -> Path:
     """Fill in wildcards in the path template with values from the params dict.
 

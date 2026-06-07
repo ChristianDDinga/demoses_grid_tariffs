@@ -8,11 +8,12 @@ import xarray as xr
 from linopy.model import LinearExpression, Model
 
 from demoses_grid_tariffs.helper_functions import (
-    CARRIERS_ELEC_PROD_LINKS,
     calculate_heatpump_cop,
     get_assets_based_on_carrier_name,
     get_electricity_consumption_of_assets,
+    get_chp_assets,
 )
+from demoses_grid_tariffs.tariffs import Tariffs
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -57,9 +58,7 @@ def build_district_heating_network(
     solar_availability: pd.DataFrame,
     static_prices: pd.DataFrame,
     snapshots: pd.DatetimeIndex,
-    vol_tou_tariffs: pd.DataFrame | None = None,
-    cap_tariff: float | None = None,
-    cap_tariff_weights_monthly: pd.DataFrame | None = None,
+    tariffs: Tariffs | None = None,
 ) -> tuple[pypsa.Network, Model]:
     """Build the district heating network model.
 
@@ -76,9 +75,8 @@ def build_district_heating_network(
         solar_availability: DataFrame containing solar availability timeseries for solar thermal generators.
         static_prices: DataFrame with non-time varying prices for greengas, waste material, residual heat, etc.
         snapshots: Set of timestamps to consider in the optimization.
-        vol_tou_tariffs: DataFrame containing volumetric TOU tariff in €/MWh (optional).
-        cap_tariff: Capacity tariff in €/MW (optional).
-        cap_tariff_weights_monthly: DataFrame containing monthly weights for the capacity tariff (optional).
+        tariffs: Grid tariffs (capacity and/or volumetric, on withdrawal and/or injection) to apply.
+            If None, no grid tariffs are applied. See demoses_grid_tariffs.tariffs.Tariffs.
 
     Returns:
     --------
@@ -108,18 +106,7 @@ def build_district_heating_network(
         snapshots=snapshots,
     )
 
-    # NOTE: we add the volumetric TOU tariffs before creating the linopy model so that VOL TOU tariffs are added to the
-    # electricity supply price from the start. But for the capacity tariff, we add it after creating the linopy model
-    # because it requires modifying the linopy model with new variables, constraints, and objective function terms.
-    if vol_tou_tariffs is not None:
-        if len(vol_tou_tariffs) < len(snapshots):
-            raise ValueError(
-                f"Data length mismatch: {len(vol_tou_tariffs)} < {len(snapshots)}. "
-                "Ensure that the volumetric TOU tariffs data covers all snapshots.",
-            )
-        logger.info("Adding volumetric TOU tariffs to the heat model...")
-        n = add_volumetric_tou_tariffs(n, vol_tou_tariffs)
-        logger.info("Successfully added volumetric TOU tariffs to the heat model.")
+    tariffs = tariffs or Tariffs()
 
     # Create linopy model from the pypsa network
     model = n.optimize.create_model()
@@ -131,18 +118,16 @@ def build_district_heating_network(
     model = add_ht_ates_constraints(n, model, SPF=HT_ATES_SPF, full_load_hours=HT_ATES_FULL_LOAD_HOURS)
 
     # Add electricity revenue from CHPs to the objective function
-    chp_assets = []
-    for carrier in CARRIERS_ELEC_PROD_LINKS:
-        chp_assets.extend(get_assets_based_on_carrier_name(n, "Link", carrier))
+    chp_assets = get_chp_assets(n)
     electricity_price_vals = electricity_price.loc[snapshots, "electricity_price"].values
     electricity_revenue_chps = build_electricity_revenue(n, model, chp_assets, electricity_price_vals)
     model = update_objective_function(model, electricity_revenue_chps)
 
-    # Add capacity tariff if provided
-    if cap_tariff is not None and cap_tariff_weights_monthly is not None:
-        logger.info("Adding capacity tariff to the heat model...")
-        model = add_capacity_tariff(n, model, cap_tariff, cap_tariff_weights_monthly, snapshots)
-        logger.info("Successfully added capacity tariff to the heat model.")
+    # Add grid tariffs (capacity and/or volumetric) on withdrawal and/or injection.
+    if not tariffs.is_empty:
+        logger.info("Adding grid tariffs to the heat model...")
+        model = add_grid_tariffs(n, model, tariffs, snapshots)
+        logger.info("Successfully added grid tariffs to the heat model.")
 
     return n, model
 
@@ -387,128 +372,165 @@ def update_objective_function(model: Model, electricity_revenue_from_chps: Linea
     return model
 
 
-def add_volumetric_tou_tariffs(n: pypsa.Network, vol_tou_tariffs: pd.DataFrame) -> pypsa.Network:
-    """Add volumetric TOU tariffs.
+def add_grid_tariffs(n: pypsa.Network, model: Model, tariffs: Tariffs, snapshots: pd.DatetimeIndex) -> Model:
+    """Apply capacity and/or volumetric grid tariffs on withdrawal and/or injection.
 
-    This is done by simply adding the volumetric TOU tariff prices to the
-    marginal price of electricity supply for each snapshot.
-
-    Args:
-    -----
-        n: PyPSA network object.
-        vol_tou_tariffs: DataFrame containing volumetric TOU tariff prices in €/MWh.
-
-    Returns:
-    --------
-        The PyPSA network object with added volumetric TOU tariff links.
-    """
-    elec_cost_with_vol_tou_tariff = (
-        n.generators_t.marginal_cost["electricity_supply"].values + vol_tou_tariffs["vol_tou_tariffs"].values
-    )
-
-    n.generators_t.marginal_cost["electricity_supply"] = elec_cost_with_vol_tou_tariff
-
-    return n
-
-
-def add_capacity_tariff(
-    n: pypsa.Network,
-    model: Model,
-    cap_tariff: float,
-    cap_tariff_weights_monthly: pd.DataFrame,
-    snapshots: pd.DatetimeIndex,
-) -> Model:
-    """Add capacity tariff (on withdrawal/consumption) to the linopy model.
+    Withdrawal is metered as the gross electricity consumption of each power-to-heat link
+    (Link-p of consuming links). Injection is metered as the gross electricity output of
+    each CHP link (Link-p * efficiency2). Tariffs are applied per asset (per connection).
 
     Args:
     -----
         n: PyPSA network object.
         model: Linopy model object.
-        cap_tariff: Capacity tariff value in €/MW.
-        cap_tariff_weights_monthly: DataFrame containing monthly weights for the capacity tariff.
+        tariffs: The grid tariffs to apply.
         snapshots: DatetimeIndex containing the snapshots.
 
     Returns:
     --------
-        The updated linopy model with capacity tariff cost term added to the objective function.
+        The updated linopy model with the requested tariff cost terms added to the objective.
     """
-    # Get the list of electricity consuming assets
-    elec_consuming_assets = get_electricity_consumption_of_assets(n).columns.tolist()
+    for direction in ("withdrawal", "injection"):
+        direction_tariff = getattr(tariffs, direction)
+        if direction_tariff.has_volumetric:
+            logger.info("Adding %s volumetric tariff to the heat model...", direction)
+            model = add_volumetric_tariff_term(n, model, direction_tariff.volumetric, direction)
+        if direction_tariff.has_capacity:
+            logger.info("Adding %s capacity tariff to the heat model...", direction)
+            model = add_capacity_tariff_term(
+                n, model, direction_tariff.cap_level, direction_tariff.cap_weights, direction, snapshots
+            )
+
+    return model
+
+
+def get_direction_power_expression(n: pypsa.Network, model: Model, direction: str) -> tuple[list[str], xr.DataArray]:
+    """Return ``(assets, power)`` for a direction, where power has dims ('name', 'snapshot').
+
+    For ``withdrawal`` the power is the gross electricity consumption (Link-p) of the
+    power-to-heat links. For ``injection`` it is the CHP electricity output, computed as
+    ``Link-p * efficiency2`` (the same expression used for CHP electricity revenue).
+
+    Args:
+    -----
+        n: PyPSA network object.
+        model: Linopy model object.
+        direction: Either ``"withdrawal"`` or ``"injection"``.
+
+    Returns:
+    --------
+        A tuple ``(assets, power)`` where ``assets`` is the list of asset names and
+        ``power`` is a non-negative linopy expression of metered power per asset/snapshot.
+    """
+    if direction == "withdrawal":
+        assets = get_electricity_consumption_of_assets(n).columns.tolist()
+        assert all(asset in n.links.index for asset in assets), (
+            "Not all electricity consuming assets are links in the network"
+        )
+        power = model.variables["Link-p"].sel(name=assets)
+    elif direction == "injection":
+        assets = get_chp_assets(n)
+        electric_efficiency = xr.DataArray(
+            n.links.loc[assets, "efficiency2"].values, coords={"name": assets}, dims=("name",)
+        )
+        power = electric_efficiency * model.variables["Link-p"].sel(name=assets)
+    else:
+        raise ValueError(f"Unknown tariff direction: {direction}. Use 'withdrawal' or 'injection'.")
+
+    return assets, power
+
+
+def add_volumetric_tariff_term(n: pypsa.Network, model: Model, vol_tariff: pd.Series, direction: str) -> Model:
+    """Add a per-MWh volumetric tariff cost term on the gross power of a direction.
+
+    Args:
+    -----
+        n: PyPSA network object.
+        model: Linopy model object.
+        vol_tariff: Snapshot-indexed volumetric tariff in €/MWh.
+        direction: Either ``"withdrawal"`` or ``"injection"``.
+
+    Returns:
+    --------
+        The updated linopy model with the volumetric tariff cost term added to the objective.
+    """
+    assets, power = get_direction_power_expression(n, model, direction)
+    if not assets:
+        logger.warning("No %s assets found; skipping %s volumetric tariff.", direction, direction)
+        return model
+
+    vol_tariff_xr = series_to_snapshot_xarray(vol_tariff, model)
+    cost_term = (vol_tariff_xr * power).sum()
+    model.objective += cost_term
+
+    return model
+
+
+def add_capacity_tariff_term(
+    n: pypsa.Network,
+    model: Model,
+    cap_level: float,
+    cap_weights: pd.Series | None,
+    direction: str,
+    snapshots: pd.DatetimeIndex,
+) -> Model:
+    """Add a weighted-kWmax capacity tariff cost term for a direction.
+
+    The metered power of each snapshot is first multiplied by the (optional) hourly weight,
+    then the monthly maximum of these weighted values is charged at ``cap_level``. This
+    implements the regulator's weighted kW max (kWmax_gewogen). If ``cap_weights`` is None,
+    the tariff is unweighted (all weights equal to one).
+
+    Args:
+    -----
+        n: PyPSA network object.
+        model: Linopy model object.
+        cap_level: Capacity tariff level in €/MW-month.
+        cap_weights: Snapshot-indexed hourly weights in [0, 1], or None for unweighted.
+        direction: Either ``"withdrawal"`` or ``"injection"``.
+        snapshots: DatetimeIndex containing the snapshots.
+
+    Returns:
+    --------
+        The updated linopy model with the capacity tariff cost term added to the objective.
+    """
+    assets, power = get_direction_power_expression(n, model, direction)
+    if not assets:
+        logger.warning("No %s assets found; skipping %s capacity tariff.", direction, direction)
+        return model
+
+    # Apply the (optional) hourly weight to each snapshot before taking the monthly maximum.
+    if cap_weights is not None:
+        weight_xr = series_to_snapshot_xarray(cap_weights, model)
+        weighted_power = weight_xr * power
+    else:
+        weighted_power = power
 
     months = snapshots.to_series().dt.to_period("M")
-    coords = {"asset_name": elec_consuming_assets, "month": months.unique()}
-    dims = tuple(coords.keys())
-
-    # Add a new variable for maximum electricity consumption per month for each electricity consuming asset
+    max_var_name = f"max_weighted_electricity_{direction}_monthly"
     model.add_variables(
-        name="max_electricity_consumption_monthly",
-        coords=coords,
-        dims=dims,
+        name=max_var_name,
+        coords={"name": assets, "month": months.unique()},
+        dims=("name", "month"),
         lower=0,
     )
 
-    # Check that elec_consuming_assets are all links since we are using Link-p to represent their electricity
-    # consumption in the constraints below
-    assert all(asset in n.links.index for asset in elec_consuming_assets
-    ), "Not all electricity consuming assets are links in the network"
-
-    # Add constraints to link the new variable with the electricity consumption of assets in each snapshot. This helps
-    # linearize the problem such that the max electricity consumption in each month should be greater than or equal to
-    # the electricity consumption in each snapshot of that month.
+    # Linearize the monthly maximum: max_var[asset, month] >= weighted_power[asset, t] for each t in the month.
     for month in months.unique():
         snapshots_in_month = months[months == month].index
         model.add_constraints(
-            model.variables["max_electricity_consumption_monthly"].sel(month=month)
-            >= model.variables["Link-p"].sel(name=elec_consuming_assets, snapshot=snapshots_in_month),
-            name=f"linearization_constraint_of_max_consumption_in_{month}"
+            model.variables[max_var_name].sel(month=month) >= weighted_power.sel(snapshot=snapshots_in_month),
+            name=f"{direction}_weighted_kwmax_constraint_{month}",
         )
 
-    # Build the weighted capacity tariff xarray
-    weighted_cap_tariff_xarray = build_weighted_cap_tariff_xarray(cap_tariff, cap_tariff_weights_monthly, snapshots)
-
-    # Calculate the capacity tariff cost term by multiplying the weighted monthly capacity tariff with the maximum 
-    # electricity consumption variable for each asset and month.
-    cap_tariff_cost_term = (weighted_cap_tariff_xarray * model.variables["max_electricity_consumption_monthly"]).sum()
-
-    # Add the capacity tariff cost term to the objective function
+    # The capacity tariff cost is the level times the sum of monthly maxima over all assets and months.
+    cap_tariff_cost_term = cap_level * model.variables[max_var_name].sum()
     model.objective += cap_tariff_cost_term
 
     return model
 
 
-def build_weighted_cap_tariff_xarray(
-        cap_tariff: float, cap_tariff_weights_monthly: pd.DataFrame, snapshots: pd.DatetimeIndex,
-) -> xr.DataArray:
-    """
-    Build a weighted capacity tariff xarray to be used in the linopy model.
-
-    Args:
-    -----
-        cap_tariff : Capacity tariff value in €/MW.
-        cap_tariff_weights_monthly : DataFrame with columns ['month', 'value'] where month is 1–12.
-        snapshots : DatetimeIndex of model snapshots to align the weights with.
-
-    Returns
-    -------
-        Monthly weights with coord 'month' as PeriodIndex.
-    """
-    df = cap_tariff_weights_monthly.copy()
-
-    months = snapshots.to_series().dt.to_period("M")
-    unique_months = months.unique()
-    year = snapshots[0].year
-
-    # Convert CSV months → PeriodIndex
-    df["month"] = pd.PeriodIndex.from_fields(year=year, month=df["month"].astype(int), freq="M")
-
-    # Keep only months that appear in simulation
-    df = df[df["month"].isin(unique_months)]
-
-    # Ensure correct ordering
-    df = df.set_index("month").reindex(unique_months)
-
-    # Build weighted_cap_tariff_xarray
-    weights = xr.DataArray(df["value"].values, coords={"month": unique_months}, dims=("month",))
-    weighted_cap_tariff_xarray = cap_tariff * weights
-
-    return weighted_cap_tariff_xarray
+def series_to_snapshot_xarray(series: pd.Series, model: Model) -> xr.DataArray:
+    """Convert a snapshot-aligned pandas Series into a linopy-compatible snapshot DataArray."""
+    coords = {"snapshot": model.variables.coords["snapshot"]}
+    return xr.DataArray(np.asarray(series.values, dtype=float), coords=coords, dims=("snapshot",))
