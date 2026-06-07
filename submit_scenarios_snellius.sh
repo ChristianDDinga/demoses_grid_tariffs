@@ -48,6 +48,9 @@ export GRB_LICENSE_FILE=/home/cdohdinga/gurobi.lic
 # Activate the virtual environment.
 source .venv/bin/activate
 
+# Switch to the main git branch
+git switch main
+
 # 1. Generate this scenario's tariff parameter files into results/<stem>/inputs/tariff_params/.
 python src/demoses_grid_tariffs/generate_tariffs.py --config "$CONFIG"
 
